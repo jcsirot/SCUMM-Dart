@@ -26,6 +26,10 @@ class Palette {
   Palette() {
     this.colors = new List<PaletteColor>(256);
   }
+  
+  Palette.withSize(int size) {
+    this.colors = new List<PaletteColor>(size);
+  }
 
   void add(int index, int r, int g, int b) {
     PaletteColor c = new PaletteColor(r, g, b);

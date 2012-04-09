@@ -74,7 +74,9 @@ class GlobalContext {
 
   void initActors() {
     for (int i = 1; i <= 13; i++) {
-      actors[i] = new Actor(i);
+      actors[i] = new Actor(i, (Room r) {
+        return r == currentRoom;
+      });
     }
   }
 
@@ -179,6 +181,13 @@ class GlobalContext {
     gfx.redrawBGStrip(currentRoom, 0, 40);
   }
 
+  void drawActors() {
+    // sort actors
+    actors.getValues().filter((Actor a) => a.costume != null).forEach((Actor a) {
+      gfx.drawCostume(a);
+    });
+  }
+
   void setCameraAt(int x) {
     gfx.setCamera(x);
   }
@@ -192,14 +201,38 @@ class GlobalContext {
   void putActorInRoom(int actorId, int roomId) {
     Actor a = actors[actorId];
     if (roomId == 0) {
-      a.put(0, 0, null);
+      a.putInRoom(0, 0, null);
     } else {
-      throw new Exception("NYI putActorInRoom $roomId");
+      a.room = res.setupRoom(roomId);
+      a.show();
+    }
+  }
+  
+  void putActor(int actorId, int x, int y) {
+    Actor a = actors[actorId];
+    a.put(x, y);
+  }
+  
+  void putActorIfInCurrentRoom(int actorId) {
+    Actor a = actors[actorId];
+    if (a.isInCurrentRoom()) {
+      a.put(0, 0);
     }
   }
 
   int getActorRoom(int actorId) {
     Room room = actors[actorId].room;
     return room == null ? 0 : room.index;
+  }
+
+  void setActorCostume(int actorId, int costumeId) {
+    Actor a = actors[actorId];
+    Costume c = res.getCostume(costumeId);
+    a.setCostume(c);
+  }
+
+  void animateActor(int actorId, int frame) {
+    Actor a = actors[actorId];
+    a.animate(frame);
   }
 }

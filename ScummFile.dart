@@ -106,6 +106,11 @@ class ScummFile implements Stream, WritableStream {
     return x;
   }
 
+  int readU16LE() {
+    int x = data[ptr++] | (data[ptr++] << 8);
+    return x;
+  }
+  
   String readString(int len) {
     return new String.fromCharCodes(array(len));
   }

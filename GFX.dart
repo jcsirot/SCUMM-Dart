@@ -60,24 +60,40 @@ class GFX {
   }
 
   void moveCamera() {
-    screenStartStrip = (cam_x / 8).floor() - 20;
+    main.screenStartStrip = (cam_x / 8).floor() - 20;
     main.xstart = screenStartStrip * 8;
   }
 
   void redrawBGStrip(Room room, int start, int count) {
-    int s = start + 40; // FIXME use camera
+    int s = start + main.screenStartStrip;
     this.currentPalette = room.palette;
     main.drawBitmap(room, s, 0, room.width, main.height, s, count, 0);
   }
 
   void drawDirty() {
-    var ctx = canvas.getContext('2d');
+    CanvasRenderingContext2D ctx = canvas.getContext('2d');
     ctx.fillStyle = "black";
     ctx.fillRect(0,0, 320, 200);
 
     // verb.updateDirtyScreen(2);
 
     main.drawStripToScreen(ctx, 0, 320, 0, 200, currentPalette);
-    // renderTexts();
+    // FIXME renderTexts();
+  }
+
+  void drawCostume(Actor a) {
+    // FIXME setup scale
+    for(int i = 0; i < 16; i++) {
+      drawLimb(a, i);
+    }
+    a.progress.progress();
+  }
+
+  void drawLimb(Actor a, int limb) {
+    if (!a.progress.isDefined(limb)) {
+      return;
+    }
+    int i = a.progress[limb].current;
+    a.costume.drawImage(main, limb, i, a.x, a.y);
   }
 }

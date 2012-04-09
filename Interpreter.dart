@@ -27,16 +27,19 @@ class Interpreter {
   Interpreter() {
     opcodes = new Map<int, Function>();
     opcodes[0x00] = op_stopObjectCode;
+    opcodes[0x01] = OP3(op_putActor, false, false, false);
     opcodes[0x03] = OP1(op_getActorRoom, false);
     opcodes[0x08] = OP1(op_isNotEqual, false);
     opcodes[0x0a] = OP3(op_startScript, false, false, false);
     opcodes[0x0c] = op_resourceRoutine;
+    opcodes[0x11] = OP2(op_animateActor, false, false);
     opcodes[0x13] = OP1(op_actorOps, false);
     opcodes[0x14] = OP1(op_print, false);
     opcodes[0x18] = op_jumpRelative;
     opcodes[0x19] = OP3(op_doSentence, false, false, false);
     opcodes[0x1a] = OP1(op_move, false);
     opcodes[0x1c] = OP1(op_startSound, false);
+    opcodes[0x21] = OP3(op_putActor, false, false, true);
     opcodes[0x2d] = OP2(op_putActorInRoom, false, false);
     opcodes[0x26] = op_setVarRange(true);
     opcodes[0x28] = op_equalZero;
@@ -46,40 +49,51 @@ class Interpreter {
     opcodes[0x32] = OP1(op_setCameraAt, false);
     opcodes[0x33] = op_roomOps;
     opcodes[0x38] = OP1(op_isLessEquals, false);
+    opcodes[0x3a] = OP1(op_sub, false);
     opcodes[0x3c] = OP1(op_stopSound, false);
     opcodes[0x40] = op_cutScene;
+    opcodes[0x41] = OP3(op_putActor, false, true, false);
     opcodes[0x44] = op_isLess(false);
     opcodes[0x46] = op_increment;
     opcodes[0x48] = op_isEqual(false);
     opcodes[0x4a] = OP3(op_startScript, false, false, true);
+    opcodes[0x51] = OP2(op_animateActor, false, true);
     opcodes[0x58] = op_override;
     opcodes[0x5a] = OP1(op_add, false);
     opcodes[0x60] = OP1(op_freezeScripts, false);
+    opcodes[0x61] = OP3(op_putActor, false, true, true);
     opcodes[0x68] = OP1(op_isScriptRunning, false);
     opcodes[0x6d] = OP2(op_putActorInRoom, false, true);
     opcodes[0x72] = OP1(op_loadRoom, false);
     opcodes[0x78] = op_isGreater(false);
     opcodes[0x7a] = op_verbOps(false);
     opcodes[0x80] = op_breakHere;
+    opcodes[0x81] = OP3(op_putActor, true, false, false);
     opcodes[0x83] = OP1(op_getActorRoom, true);
     opcodes[0x88] = OP1(op_isNotEqual, true);
+    opcodes[0x91] = OP2(op_animateActor, true, false);
     opcodes[0x93] = OP1(op_actorOps, true);
     opcodes[0x94] = OP1(op_print, true);
     opcodes[0x9a] = OP1(op_move, true);
     opcodes[0x9c] = OP1(op_startSound, true);
     opcodes[0xa0] = op_stopObjectCode;
+    opcodes[0xa1] = OP3(op_putActor, true, false, true);
     opcodes[0xa6] = op_setVarRange(false);
     opcodes[0xa8] = op_notEqualZero;
+    opcodes[0xaa] = OP1(op_sub, true);
     opcodes[0xac] = op_expression;
     opcodes[0xad] = OP2(op_putActorInRoom, true, false);
     opcodes[0xb2] = OP1(op_setCameraAt, true);
     opcodes[0xb8] = OP1(op_isLessEquals, true);
     opcodes[0xbc] = OP1(op_stopSound, true);
+    opcodes[0xc1] = OP3(op_putActor, true, true, false);
     opcodes[0xc4] = op_isLess(true);
     opcodes[0xc8] = op_isEqual(true);
     opcodes[0xcc] = op_pseudoRoom;
+    opcodes[0xd1] = OP2(op_animateActor, true, true);
     opcodes[0xda] = OP1(op_add, true);
     opcodes[0xe0] = OP1(op_freezeScripts, true);
+    opcodes[0xe1] = OP3(op_putActor, true, true, true);
     opcodes[0xe8] = OP1(op_isScriptRunning, true);
     opcodes[0xed] = OP2(op_putActorInRoom, true, true);
     opcodes[0xf2] = OP1(op_loadRoom, true);
@@ -125,12 +139,8 @@ class Interpreter {
     return (ExecutionContext ctx) => op(ctx, indirect1, indirect2, indirect3);
   }
 
-
   List<int> readVarargs(ExecutionContext ctx) {
-    List<int> args = new List<int>(16); // FIXME length?
-    for (int i = 0; i < args.length; i++) {
-      args[i] = 0;
-    }
+    List<int> args = new List<int>();
     while (true) {
       int subOpcode = ctx.data.read();
       if (subOpcode == 0xff) {
@@ -138,6 +148,9 @@ class Interpreter {
       }
       bool ind = (subOpcode & 0x80) > 0;
       args.add(ind ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE());
+    }
+    while(args.length < 16) { // FIXME length?
+      args.add(0);
     }
     return args;
   }
@@ -555,7 +568,14 @@ class Interpreter {
     int varId = ctx.data.read16LE();
     int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
     print("op_add var=$varId value=$value");
-    ctx.setGlobalVar(varId, ctx.getVar(varId) + value);
+    ctx.setVar(varId, ctx.getVar(varId) + value);
+  }
+  
+  void op_sub(ExecutionContext ctx, bool indirect) {
+    int varId = ctx.data.read16LE();
+    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
+    print("op_sub var=$varId value=$value");
+    ctx.setVar(varId, ctx.getVar(varId) - value);
   }
 
   void op_doSentence(ExecutionContext ctx, bool ind1, bool ind2, bool ind3) {
@@ -659,17 +679,34 @@ class Interpreter {
       case 0x01:
         int costumeId = ctx.data.read();
         print("op_actorOps actor=$actorId SO_COSTUME costume=$costumeId");
+        ctx.setActorCostume(actorId, costumeId);
+        break;
+      case 0x08:
+        print("op_actorOps actor=$actorId SO_DEFAULT");
         break;
       case 0x0b:
         int index = ctx.data.read();
         int color = ctx.data.read();
         print("op_actorOps actor=$actorId SO_PALETTE index=$index color=$color");
         break;
+      case 0x11:
+        int sx = ctx.data.read();
+        int sy = ctx.data.read();
+        print("op_actorOps actor=$actorId SO_ACTOR_SCALE sx=$sx sy=$sy");
+        break;
       case 0x12:
          print("op_actorOps actor=$actorId SO_NEVER_ZCLIP");
          break;
+      case 0x13:
+        int zp = ctx.data.read();
+        print("op_actorOps actor=$actorId SO_ALWAYS_ZCLIP z-plane=$zp");
+        break;
       case 0x14:
         print("op_actorOps actor=$actorId SO_IGNORE_BOXES");
+        break;
+      case 0x15:
+        print("op_actorOps actor=$actorId SO_FOLLOW_BOXES");
+        ctx.putActorIfInCurrentRoom(actorId);
         break;
       case 0x80:
         ctx.data.read16LE(); // dummy
@@ -678,5 +715,20 @@ class Interpreter {
         throw new Exception("Unsupported op_actorOps actor=$actorId opcode=0x${subOpcode.toRadixString(16)}");
       }
     }
+  }
+  
+  void op_putActor(ExecutionContext ctx, bool ind1, bool ind2, bool ind3) {
+    int actorId = ind1 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
+    int x = ind2 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
+    int y = ind3 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
+    print("op_putActor actor=$actorId x=$x y=$y");
+    ctx.putActor(actorId, x, y);
+  }
+  
+  void op_animateActor(ExecutionContext ctx, bool ind1, bool ind2) {
+    int actorId = ind1 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
+    int animation = ind2 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
+    print("op_animateActor actor=$actorId animation=$animation");
+    ctx.animateActor(actorId, animation);
   }
 }

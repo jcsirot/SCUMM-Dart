@@ -30,6 +30,7 @@ class ScummVM {
   ResourceManager resMgr;
   GFX gfx;
   Game game;
+  int delta = 0;
 
   ScummVM() {
     this.charsets = new Map<int, Charset>();
@@ -158,18 +159,24 @@ class ScummVM {
   void redraw() {
     gfx.moveCamera();
     global.redrawBackground();
+    //global.resetActorBgs();
+    global.drawActors();
     gfx.drawDirty();
   }
 
   bool mainLoop(int time) {
     int clockTick = (this.timer.tick() * 60).round();
-    global.setGlobalVar(GlobalContext.TIMER, clockTick);
-    global.setGlobalVar(GlobalContext.TIMER_TOTAL, global.getGlobalVar(GlobalContext.TIMER_TOTAL) + clockTick);
-    decreaseScriptsDelay(clockTick);
-    // process input
-    global.setGlobalVar(GlobalContext.MUSIC_TIMER, global.getGlobalVar(GlobalContext.MUSIC_TIMER) + 6);
-    runAllScripts();
-    redraw();
+    delta += clockTick;
+    if (delta >= 4) {
+      global.setGlobalVar(GlobalContext.TIMER, delta);
+      global.setGlobalVar(GlobalContext.TIMER_TOTAL, global.getGlobalVar(GlobalContext.TIMER_TOTAL) + delta);
+      decreaseScriptsDelay(delta);
+      // process input
+      global.setGlobalVar(GlobalContext.MUSIC_TIMER, global.getGlobalVar(GlobalContext.MUSIC_TIMER) + 6);
+      runAllScripts();
+      redraw();
+      delta = 0;
+    }
     window.webkitRequestAnimationFrame(mainLoop, document.query('#surface'));
   }
 

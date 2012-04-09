@@ -32,6 +32,7 @@ interface Stream {
   int read32LE();
   int read16BE();
   int read16LE();
+  int readU16LE();
   String readString(int len);
   /** Read an almost 0-terminated array */
   List<int> readArray();

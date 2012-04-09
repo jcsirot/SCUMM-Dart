@@ -147,7 +147,7 @@ class ResourceManager {
   }
 
   /* FIXME getXXX duplicated code */
-
+  
   Charset getCharset(int idx) {
     Charset charset = charsets[idx];
     if (!charset.isLoaded()) {
@@ -172,6 +172,7 @@ class ResourceManager {
       Stream data = loadResource(Costume.TYPE, costume.room, costume.offset);
       costume.initWithData(data);
     }
+    return costume;
   }
 
   Stream loadResource(String type, int roomIdx, int offset) {

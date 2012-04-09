@@ -247,8 +247,24 @@ class ExecutionContext {
   void putActorInRoom(int actorId, int roomId) {
     global.putActorInRoom(actorId, roomId);
   }
+  
+  void putActor(int actorId, int x, int y) {
+    global.putActor(actorId, x, y);
+  }
+  
+  void putActorIfInCurrentRoom(int actorId) {
+    global.putActorIfInCurrentRoom(actorId);
+  }
 
   int getActorRoom(int actorId) {
     return global.getActorRoom(actorId);
+  }
+  
+  void setActorCostume(int actorId, int costumeId) {
+    global.setActorCostume(actorId, costumeId);
+  }
+  
+  void animateActor(int actorId, int animation) {
+    global.animateActor(actorId, animation);
   }
 }
