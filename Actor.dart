@@ -38,7 +38,7 @@ class Actor {
   int x, y, elevation;
   int facing;
   int frame;
-  CostumeAnimationProgress progress;
+  CostumeAnimationProgress animation;
   Room room;
   Costume costume;
   CostumeData cdata;
@@ -48,6 +48,7 @@ class Actor {
   int animProgress;
   bool visible;
   bool redraw;
+  bool clipped;
   int walkScript, talkScript;
   Function testCurrentRoom;
 
@@ -71,6 +72,7 @@ class Actor {
     this.moving = 0;
     this.facing = 180;
     this.visible = false;
+    this.clipped = true;
     this.costumeInitialized = false;
     this.cdata = new CostumeData();
     this.testCurrentRoom = testCurrentRoom;
@@ -79,7 +81,7 @@ class Actor {
   bool isInCurrentRoom() {
     return testCurrentRoom(this.room);
   }
-  
+
   void put(int x, int y) {
     putInRoom(x, y, this.room);
   }
@@ -101,11 +103,11 @@ class Actor {
       }
     }
   }
-  
+
   bool isInRoom(int roomId) {
     return room.index == roomId;
   }
-  
+
   void setCostume(Costume c) {
     this.costume = c;
     if (visible) {
@@ -118,7 +120,7 @@ class Actor {
     }
     //init palette
   }
-  
+
   void show() {
     if (room == null || visible) {
       return;
@@ -131,9 +133,9 @@ class Actor {
     visible = true;
     costumeInitialized = true;
   }
-  
+
   void hide() {
-    
+
   }
 
   void animate(int animation) {
@@ -181,10 +183,10 @@ class Actor {
       }
       //costume.decodeData(this, f, 0xFFFF);
       this.frame = f;
-      this.progress = costume.animationForFrame(facing, frame);
+      this.animation = costume.animationForFrame(facing, frame);
     }
   }
-  
+
   void setDirection(int dir) {
     if (dir == facing) {
       return;
@@ -207,5 +209,21 @@ class Actor {
 
   void stopMoving() {
     moving = 0;
+  }
+
+  void drawCostume(VirtualScreen vs) {
+    // FIXME setup scale
+    for(int i = 0; i < 16; i++) {
+      drawLimb(i, vs);
+    }
+    animation.progress();
+  }
+
+  void drawLimb(int limb, VirtualScreen vs) {
+    if (!animation.isDefined(limb)) {
+      return;
+    }
+    int i = animation[limb].current;
+    costume.drawImage(vs, limb, i, x, y, clipped);
   }
 }

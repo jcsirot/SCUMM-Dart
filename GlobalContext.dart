@@ -50,6 +50,7 @@ class GlobalContext {
   Map<int, Actor> actors;
   List<int> vars;
   Map<int, List<int>> arrays;
+  List<RoomObject> objs;
 
   GlobalContext(ScummVM vm, ResourceManager res, GFX gfx) {
     this.vm = vm; // This code is ugly. Need to be fixed later
@@ -58,6 +59,7 @@ class GlobalContext {
     this.actors = new Map<int, Actor>();
     this.vars = new List<int>(800);
     this.arrays = new Map<int, List<int>>();
+    this.objs = new List<RoomObject>();
     initVars();
     initActors();
   }
@@ -179,9 +181,14 @@ class GlobalContext {
       return;
     }
     gfx.redrawBGStrip(currentRoom, 0, 40);
+    objs.forEach((RoomObject obj) {
+      gfx.drawObject(obj);
+    });
+    objs = new List<RoomObject>();
   }
 
   void drawActors() {
+    gfx.main.resetMainBuffer();
     // sort actors
     actors.getValues().filter((Actor a) => a.costume != null).forEach((Actor a) {
       gfx.drawCostume(a);
@@ -196,6 +203,11 @@ class GlobalContext {
     gfx.adjustPalette(index, r, g, b);
   }
 
+  void pushObject(int objectId) {
+    RoomObject obj = currentRoom.getObject(objectId);
+    objs.add(obj);
+  }
+
   /* Actors */
 
   void putActorInRoom(int actorId, int roomId) {
@@ -207,12 +219,12 @@ class GlobalContext {
       a.show();
     }
   }
-  
+
   void putActor(int actorId, int x, int y) {
     Actor a = actors[actorId];
     a.put(x, y);
   }
-  
+
   void putActorIfInCurrentRoom(int actorId) {
     Actor a = actors[actorId];
     if (a.isInCurrentRoom()) {
@@ -234,5 +246,17 @@ class GlobalContext {
   void animateActor(int actorId, int frame) {
     Actor a = actors[actorId];
     a.animate(frame);
+  }
+
+  void drawActorMessage(Message msg) {
+    Charset charset = res.getCharset(4); // FIXME
+    int width = charset.getStringWidth(msg.value);
+    int xstart = msg.center ? msg.x - (width >> 1) : msg.x;
+    charset.printString(msg.value, xstart, msg.y, width, msg.color, gfx.main);
+  }
+
+  void forceClipping(int actorId, bool clipped) {
+    Actor a = actors[actorId];
+    a.clipped = clipped;
   }
 }

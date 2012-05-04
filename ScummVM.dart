@@ -21,22 +21,73 @@
 
 class ScummVM {
 
+  /* Global const */
+  static final int EGO = 1;
+  static final int ROOM = 4;
+  static final int OVERRIDE = 5;
+  static final int MUSIC_TIMER = 14;
+  static final int CAMERA_MIN_X = 17;
+  static final int CAMERA_MAX_X = 18;
+  static final int ROOM_RESOURCE = 22;
+  static final int ENTRY_SCRIPT = 28;
+  static final int ENTRY_SCRIPT2 = 29;
+  static final int EXIT_SCRIPT = 30;
+  static final int SENTENCE_SCRIPT = 34;
+  static final int CUTSCENE_START_SCRIPT = 35;
+  static final int CUTSCENE_END_SCRIPT = 36;
+  static final int DEBUG_MODE = 39;
+  static final int TIMER = 46;
+  static final int TIMER_TOTAL = 47;
+  static final int VIDEO_MODE = 49;
+  static final int CURSOR_STATE = 52;
+  static final int NEW_ROOM = 72;
+  static final int MI1_SPECIAL = 74;
+
   Map<int, Charset> charsets;
   List<ExecutionContext> threads;
   Timer timer;
   Interpreter interpreter;
-
-  GlobalContext global;
-  ResourceManager resMgr;
+  ResourceManager res;
   GFX gfx;
   Game game;
   int delta = 0;
+
+  ExecutionContext currentThread;
+  Room currentRoom;
+  Map<int, Actor> actors;
+  List<int> vars;
+  Map<int, List<int>> arrays;
+  List<RoomObject> objs;
 
   ScummVM() {
     this.charsets = new Map<int, Charset>();
     this.threads = new List<ExecutionContext>();
     this.timer = new Timer();
     this.interpreter = new Interpreter();
+    this.actors = new Map<int, Actor>();
+    this.vars = new List<int>(800);
+    this.arrays = new Map<int, List<int>>();
+    this.objs = new List<RoomObject>();
+    initVars();
+    initActors();
+  }
+
+  void initVars() {
+    for (int i = 0; i < vars.length; i++) {
+      vars[i] = 0;
+    }
+    vars[DEBUG_MODE] = 1;
+    vars[EGO] = 3;
+    vars[VIDEO_MODE] = 19;
+    vars[MI1_SPECIAL] = 1225; // MI1 Special value (for copy protection?)
+  }
+
+  void initActors() {
+    for (int i = 1; i <= 13; i++) {
+      actors[i] = new Actor(i, (Room r) {
+        return r == currentRoom;
+      });
+    }
   }
 
   void start(Game game) {
@@ -48,10 +99,9 @@ class ScummVM {
 
   void init() {
     print("Initializing VM");
-    resMgr = new ResourceManager(game.assetManager);
-    resMgr.loadIndex();
-    gfx = new GFX(resMgr);
-    global = new GlobalContext(this, resMgr, gfx);
+    res = new ResourceManager(game.assetManager);
+    res.loadIndex();
+    gfx = new GFX(res);
   }
 
   void freeze(bool force) {
@@ -82,6 +132,10 @@ class ScummVM {
     });
   }
 
+  void spawnWithId(int scriptId, List<int> params) {
+    spawn(getScript(scriptId), params);
+  }
+
   void spawn(Script script, List<int> params) {
     ExecutionContext parent;
     threads.forEach((ExecutionContext ctx) {
@@ -93,8 +147,17 @@ class ScummVM {
     parent.setStatus(ExecutionContext.PENDED);
     fork.setStatus(ExecutionContext.RUNNING);
     threads.add(fork);
-    interpreter.run(fork);
+    run(fork);
     parent.setStatus(ExecutionContext.RUNNING);
+    this.currentThread = parent;
+  }
+
+  void freezeScripts(bool unfreeze, bool force) {
+    if (unfreeze) {
+      this.unfreeze();
+    } else {
+      this.freeze(force);
+    }
   }
 
   bool isScriptRunning(int scriptId) {
@@ -120,11 +183,11 @@ class ScummVM {
   }
 
   void runScript(int index, List<int> params) {
-    Script script = resMgr.getScript(index);
-    ExecutionContext ctx = new ExecutionContext.root(global, script, params);
+    Script script = res.getScript(index);
+    ExecutionContext ctx = new ExecutionContext.root(this, script, params);
     ctx.setStatus(ExecutionContext.RUNNING);
     threads.add(ctx);
-    interpreter.run(ctx);
+    run(ctx);
   }
 
   void decreaseScriptsDelay(int clockTick) {
@@ -150,29 +213,34 @@ class ScummVM {
       if (ctx != null) {
         if (ctx.getStatus() == ExecutionContext.RUNNING && ctx.frozenCount == 0) {
           ctx.restore();
-          interpreter.run(ctx);
+          run(ctx);
         }
       }
     });
   }
 
+  void run(ExecutionContext thread) {
+    this.currentThread = thread;
+    interpreter.run(this);
+  }
+
   void redraw() {
     gfx.moveCamera();
-    global.redrawBackground();
+    redrawBackground();
     //global.resetActorBgs();
-    global.drawActors();
+    drawActors();
     gfx.drawDirty();
   }
 
   bool mainLoop(int time) {
     int clockTick = (this.timer.tick() * 60).round();
     delta += clockTick;
-    if (delta >= 4) {
-      global.setGlobalVar(GlobalContext.TIMER, delta);
-      global.setGlobalVar(GlobalContext.TIMER_TOTAL, global.getGlobalVar(GlobalContext.TIMER_TOTAL) + delta);
+    if (delta >= 5) {
+      setGlobalVar(TIMER, delta);
+      setGlobalVar(TIMER_TOTAL, getGlobalVar(TIMER_TOTAL) + delta);
       decreaseScriptsDelay(delta);
       // process input
-      global.setGlobalVar(GlobalContext.MUSIC_TIMER, global.getGlobalVar(GlobalContext.MUSIC_TIMER) + 6);
+      setGlobalVar(MUSIC_TIMER, getGlobalVar(MUSIC_TIMER) + 6);
       runAllScripts();
       redraw();
       delta = 0;
@@ -186,14 +254,196 @@ class ScummVM {
     gfx.initScreens(b, h);
   }
 
+  void beginCutScene(List<int> params) {
+    // FIXME initialize the cut scene
+    spawnWithId(getVar(CUTSCENE_START_SCRIPT), params);
+  }
+
+  void redrawBackground() {
+    if (currentRoom == null) {
+      return;
+    }
+    gfx.redrawBGStrip(currentRoom, 0, 40);
+    objs.forEach((RoomObject obj) {
+      gfx.drawObject(obj);
+    });
+    objs = new List<RoomObject>();
+  }
+
+  void drawActors() {
+    gfx.main.resetMainBuffer();
+    // sort actors
+    actors.getValues().filter((Actor a) => a.costume != null).forEach((Actor a) {
+      gfx.drawCostume(a);
+    });
+  }
+
+  void setCameraAt(int x) {
+    gfx.setCamera(x);
+  }
+
+  void adjustPalette(int index, int r, int g, int b) {
+    gfx.adjustPalette(index, r, g, b);
+  }
+
+  void pushObject(int objectId) {
+    RoomObject obj = currentRoom.getObject(objectId);
+    objs.add(obj);
+  }
+
   /* Resources */
 
   Script getScript(int id) {
-    return resMgr.getScript(id);
+    Script s = res.getScript(id);
+    if (s == null) {
+      s = this.currentRoom.scripts[id];
+    }
+    return s;
   }
 
   void loadCharsetResource(int id) {
-    resMgr.getCharset(id);
+    res.getCharset(id);
+  }
+
+  Costume getCostume(int id) {
+     return res.getCostume(id);
+  }
+
+  /* Variables */
+
+  int getVar(int varAddr) {
+    // FIXME Scumm V5 uses indirect word variables - NYI here
+    if ((varAddr & 0x8000) != 0) {
+      /* bit variable */
+      throw new Exception("Bit variable NYI");
+    } else if ((varAddr & 0x4000) != 0) {
+      /* local variable */
+      return currentThread.getLocalVar(varAddr & 0xf);
+    } else if ((~varAddr & 0xe000) != 0) {
+      /* global variable */
+      return getGlobalVar(varAddr & 0x1fff);
+    } else {
+      throw new Exception("Unknown variable type");
+    }
+    return 0;
+  }
+
+  void setVar(int varAddr, int value) {
+    // FIXME Scumm V5 uses indirect word variables - NYI here
+    if ((varAddr & 0x8000) != 0) {
+      /* bit variable */
+      throw new Exception("Bit variable NYI");
+    } else if ((varAddr & 0x4000) != 0) {
+      /* local variable */
+      currentThread.setLocalVar(varAddr & 0xf, value);
+    } else if ((~varAddr & 0xe000) != 0) {
+      /* global variable */
+      setGlobalVar(varAddr & 0x1fff, value);
+    } else {
+      throw new Exception("Unknown variable type");
+    }
+  }
+
+  void setGlobalVar(int index, int value) {
+    vars[index] = value;
+  }
+
+  int getGlobalVar(int index) {
+    return vars[index];
+  }
+
+  void storeArray(int index, List<int> array) {
+    arrays[index] = array;
+  }
+
+  void storeArrayData(int arrayIndex, int index, int value) {
+    arrays[arrayIndex][index] = value;
+  }
+
+  void freeArray(int index) {
+    arrays.remove(index);
+  }
+
+  /* Room */
+
+  void startRoom(int roomId) {
+    setGlobalVar(NEW_ROOM, roomId);
+    int scriptId = getGlobalVar(EXIT_SCRIPT);
+    if (scriptId != 0) {
+      spawn(getScript(scriptId), new List<int>(16));
+    }
+    setGlobalVar(ROOM, roomId);
+    setGlobalVar(ROOM_RESOURCE, roomId);
+    // FIXME clear room objects
+    if (roomId == 0) {
+      return;
+    }
+
+    this.currentRoom = res.setupRoom(roomId);
+
+    setGlobalVar(CAMERA_MIN_X, 160);
+    setGlobalVar(CAMERA_MAX_X, this.currentRoom.width - 160);
+    // FIXME set camera position
+
+    // FIXME Configure & show actors
+
+    scriptId = getGlobalVar(ENTRY_SCRIPT);
+    spawn(getScript(scriptId), new List<int>(16));
+    spawn(this.currentRoom.entry, new List<int>(16));
+    scriptId = getGlobalVar(ENTRY_SCRIPT2);
+    spawn(getScript(scriptId), new List<int>(16));
+  }
+
+  /* Actors */
+
+  void putActorInRoom(int actorId, int roomId) {
+    Actor a = actors[actorId];
+    if (roomId == 0) {
+      a.putInRoom(0, 0, null);
+    } else {
+      a.room = res.setupRoom(roomId);
+      a.show();
+    }
+  }
+
+  void putActor(int actorId, int x, int y) {
+    Actor a = actors[actorId];
+    a.put(x, y);
+  }
+
+  void putActorIfInCurrentRoom(int actorId) {
+    Actor a = actors[actorId];
+    if (a.isInCurrentRoom()) {
+      a.put(0, 0);
+    }
+  }
+
+  int getActorRoom(int actorId) {
+    Room room = actors[actorId].room;
+    return room == null ? 0 : room.index;
+  }
+
+  void setActorCostume(int actorId, int costumeId) {
+    Actor a = actors[actorId];
+    Costume c = res.getCostume(costumeId);
+    a.setCostume(c);
+  }
+
+  void animateActor(int actorId, int frame) {
+    Actor a = actors[actorId];
+    a.animate(frame);
+  }
+
+  void drawActorMessage(Message msg) {
+    Charset charset = res.getCharset(4); // FIXME
+    int width = charset.getStringWidth(msg.value);
+    int xstart = msg.center ? msg.x - (width >> 1) : msg.x;
+    charset.printString(msg.value, xstart, msg.y, width, msg.color, gfx.main);
+  }
+
+  void forceClipping(int actorId, bool clipped) {
+    Actor a = actors[actorId];
+    a.clipped = clipped;
   }
 
 }

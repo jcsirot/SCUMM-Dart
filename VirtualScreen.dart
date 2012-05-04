@@ -36,6 +36,8 @@ class VirtualScreen {
   bool scrollable;
   Uint8Array buffer;
   Uint8Array buffer2;
+  Uint8Array textBuffer;
+  Uint8Array composite;
   List<Uint8Array> zplanes;
   int xstart;
   int screenStartStrip;
@@ -55,9 +57,18 @@ class VirtualScreen {
       /* scrollable room can be 4 screens wide */
       this.size += 4 * 320;
     }
+    this.composite = new Uint8Array(size);
     this.buffer = new Uint8Array(size);
     if (this.dual) {
       this.buffer2 = new Uint8Array(size);
+    }
+    this.textBuffer = new Uint8Array(WIDTH * HEIGHT);
+    for (int i = 0; i < textBuffer.length; i++) {
+      textBuffer[i] = 0xfd;
+    }
+    this.zplanes = new List<Uint8Array>(5);
+    for (int i = 1; i < zplanes.length; i++) {
+      zplanes[i] = new Uint8Array(40 * HEIGHT);
     }
   }
 
@@ -70,8 +81,40 @@ class VirtualScreen {
     return buf.subarray(y * 320 + xstart + x);
   }
 
-  void drawBitmap(Room room, int x, int y, int width, int height, int start, int count, int flag) {
+  Uint8Array getMainBufferWithCoords(int x, int y) {
+    return buffer.subarray(y * 320 + xstart + x);
+  }
+
+  void resetMainBuffer() {
+    if (!dual) {
+      return;
+    }
+    Stream src = new ScummFile.fromUint8Array(getWorkBufferWithCoords(0, 0));
+    WritableStream dst = new ScummFile.fromUint8Array(getMainBufferWithCoords(0, 0));
+    while (!src.eof()) {
+      dst.write(src.read());
+    }
+  }
+
+  void drawBackground(Room room, int start, int count) {
     Stream data = room.bg;
+    data.reset();
+    int zpLen = data.readTLV("RMIH").read16LE();
+    Stream im00 = data.readTLV("IM00");
+    /*
+    Stream smap = im00.readTLV("SMAP");
+    List<Stream> zp = new List<Stream>(zpLen);
+    for (int i = 1; i <= zpLen; i++) {
+      zp.add(im00.readTLV("ZP0$i"));
+    }
+    */
+    drawBitmap(im00, start, 0, room.width, this.height, start, count, zpLen, 0);
+    //decodeMask(zp);
+  }
+
+  void drawBitmap(Stream src, int x, int y, int width, int height, int start, int count, int zpLen, int flags) {
+    /*
+    Stream src = room.bg;
     data.reset();
     int zpLen = data.readTLV("RMIH").read16LE();
     Stream im00 = data.readTLV("IM00");
@@ -79,6 +122,13 @@ class VirtualScreen {
     List<Stream> zp = new List<Stream>(zpLen);
     for (int i = 1; i <= zpLen; i++) {
       zp.add(im00.readTLV("ZP0$i"));
+    }
+    */
+
+    Stream smap = src.readTLV("SMAP");
+    List<Stream> zp = new List<Stream>(zpLen);
+    for (int i = 1; i <= zpLen; i++) {
+      zp.add(src.readTLV("ZP0$i"));
     }
 
     if (y + height > this.height) {
@@ -92,7 +142,7 @@ class VirtualScreen {
       start += -sx;
       sx = 0;
     }
-    int limit = (Math.max(room.width, this.width) / 8).floor() - x;
+    int limit = (Math.max(width, this.width) / 8).floor() - x;
     if (limit > count) {
       limit = count;
     } else if (limit > 40 - sx) {
@@ -102,10 +152,11 @@ class VirtualScreen {
     for (int k = 0; k < limit; ++k, ++start, ++sx, ++x) {
       int offset = y * 320 + (x * 8);
       // adjust vs dirty
-      WritableStream dst = new ScummFile.fromUint8Array(getWorkBufferWithCoords(0, 0));
+      WritableStream dst = new ScummFile.fromUint8Array(getWorkBufferWithCoords(0, 0)); // FIXME
       dst.reset();
       dst.seek(offset);
       drawStrip(dst, x, y, width, height, start, smap);
+      decodeMaskStripe(zp, x, y, width, height, k, flags);
 
       /*
       if(this.number == 0) {
@@ -115,14 +166,28 @@ class VirtualScreen {
       }
       */
     }
-    decodeMask(zp);
+    //decodeMask(zp, x, y, width, height, flags);
   }
-  
-  void decodeMask(List<Stream> zp) {
-    zplanes = new List<Uint8Array>();
+
+  void decodeMaskStripe(List<Stream> zp, int x, int y, int width, int height, int strpnr, int flags) {
     zp.forEach((Stream s) {
       s.reset();
-      Uint8Array a = new Uint8Array(200 * 40); // FIXME
+      //Uint8Array a = new Uint8Array(height);
+      s.seek(2 * strpnr); // FIXME?
+      int offset = s.read16LE() - 8;
+      //WritableStream out = new ScummFile.fromUint8Array(a);
+      s.reset();
+      s.seek(offset);
+      WritableStream out = new ScummFile.fromUint8Array(zplanes[1]); // FIXME
+      out.seek(y * 40 + x);
+      decodeStripe(s, out, height);
+    });
+  }
+
+  void decodeMask(List<Stream> zp, int x, int y, int width, int height, int flags) {
+    zp.forEach((Stream s) {
+      s.reset();
+      Uint8Array a = new Uint8Array(height * width); // FIXME
       s.seek(2 * screenStartStrip);
       List<int> stripOffs = new List<int>();
       for (int i = 0; i < 40; i++) {
@@ -134,20 +199,26 @@ class VirtualScreen {
         s.seek(stripOffs[i]);
         out.reset();
         out.seek(i);
-        decodeStripe(s, out);
+        decodeStripe(s, out, height);
       };
-      zplanes.add(a);
+      // FIXME
+      out = new ScummFile.fromUint8Array(zplanes[1]);
+      Stream src = new ScummFile.fromUint8Array(a);
+      out.reset();
+      out.seek(y * 40 + x);
+      while (!src.eof()) {
+        out.write(src.read());
+      }
     });
   }
-  
+
   bool isMasked(int x, int y, int z) {
     int maskbit = 0x80 >> (x & 7);
-    int mask = this.zplanes[z-1][y * 40 + (x >> 3)];
+    int mask = this.zplanes[z][y * 40 + (x >> 3)];
     return (mask & maskbit) != 0;
   }
-  
-  void decodeStripe(Stream s, WritableStream out) {
-    int lines = 200;
+
+  void decodeStripe(Stream s, WritableStream out, int lines) {
     while (lines > 0) {
       int count = s.read();
       if ((count & 0x80) != 0) {
@@ -176,7 +247,7 @@ class VirtualScreen {
     int offset = data.read32LE();
     data.reset();
     data.seek(offset - 8);
-    decompressStrip(dst, data, 320, height);
+    decompressStrip(dst, data, width, height);
   }
 
   void decompressStrip(WritableStream dst, Stream data, int width, int lineCount) {
@@ -230,7 +301,7 @@ class VirtualScreen {
     Function READ_BIT = () {
       cl--; int bit = bits & 1; bits >>= 1; return bit;
     };
-    
+
     Function FILL_BITS = () {
       if(cl <= 8) {
         bits |= (src.read() << cl);
@@ -263,9 +334,9 @@ class VirtualScreen {
       } while (--x);
       if (h > 1)
         dst.seek(312);
-    } while(--h != 0);    
-  }  
-  
+    } while(--h != 0);
+  }
+
   void drawStripBasicV(WritableStream dst, Stream src, int width, int lineCount, int shr, int mask) {
     int cl = 8;
     int inc = -1;
@@ -284,7 +355,7 @@ class VirtualScreen {
     };
     var x = 8;
     do {
-      var h = height;
+      var h = lineCount;
       do {
         FILL_BITS();
         if (color != 0xff)
@@ -304,7 +375,7 @@ class VirtualScreen {
           color += inc;
         }
       } while(--h);
-      dst.seek(-63999);
+      dst.seek(1 - lineCount * 320);
     } while(--x);
   }
 
@@ -393,14 +464,17 @@ class VirtualScreen {
     int scale = 2;
     int y = top;
     int height = bottom;
+
     ImageData dst = ctx.getImageData(x, y, width, height);
     //Stream src = new ScummFile.fromUint8Array(getWorkBuffer());
-    Stream src = new ScummFile.fromUint8Array(getWorkBufferWithCoords(0, 0));
+    Stream src = new ScummFile.fromUint8Array(getMainBufferWithCoords(0, 0));
+    Stream txt = new ScummFile.fromUint8Array(textBuffer);
     int i = 0;
     for (int h = 0; h < height; h++) {
       for (int w = 0; w < width; w++) {
+        int txtcolor = txt.read();
         int palcolor = src.read();
-        PaletteColor color = pal[palcolor];
+        PaletteColor color = pal[txtcolor == 0xfd ? palcolor : txtcolor];
         if (color != null) {
           dst.data[i * 4] = color.r;
           dst.data[i * 4 + 1] = color.g;

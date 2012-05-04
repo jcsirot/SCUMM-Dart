@@ -21,8 +21,9 @@
 
 class DefaultMessage extends Message {
 
-  void printString(ExecutionContext ctx) {
-    String str = format(ctx);
+  void printString(ScummVM vm) {
+    String str = format(vm);
     print("[DEFAULT] $str");
+    vm.drawActorMessage(this);
   }
 }

@@ -84,7 +84,7 @@ class Costume extends Resource {
     data.reset();
     this.loaded = true;
   }
-  
+
   void decodeAnimation(int idx) {
     int mask = data.readU16LE();
     int i = 0;
@@ -106,7 +106,7 @@ class Costume extends Resource {
     } while ((mask & 0xFFFF) != 0);
     animations[idx] = cAnim;
   }
-  
+
   CostumeAnimationProgress animationForFrame(int facing, int frame) {
     CostumeAnimationProgress rv = new CostumeAnimationProgress();
     int anim = Actor.angleToDirection(facing) + frame * 4;
@@ -166,9 +166,9 @@ class Costume extends Resource {
       mask <<= 1;
     } while ((mask & 0xFFFF) != 0);
   }
-  
-  void drawImage(VirtualScreen vs, int limb, int idx, int ax, int ay) {
-    WritableStream dst = new ScummFile.fromUint8Array(vs.getWorkBufferWithCoords(0, 0));
+
+  void drawImage(VirtualScreen vs, int limb, int idx, int ax, int ay, bool clipped) {
+    WritableStream dst = new ScummFile.fromUint8Array(vs.getMainBufferWithCoords(0, 0));
     int code = animCommands[idx];
     if (code == 0x7b) {
       return;
@@ -179,7 +179,7 @@ class Costume extends Resource {
     int off = data.read16LE() - 6;
     data.reset();
     data.seek(off);
-    
+
     int width = data.read();
     data.read();
     int height = data.read();
@@ -191,7 +191,7 @@ class Costume extends Resource {
 
     ax = ax + cx;
     ay = ay + cy;
-    
+
     // clip the costume when larger than screen width
     int skipCols = vs.width - ax; //width - (ax + width - vs.width);
     int mask, shr;
@@ -200,13 +200,13 @@ class Costume extends Resource {
     } else {
       mask = 0x07; shr = 3;
     }
-    
+
     dst.seek(320 * ay + ax);
-    
+
     //Stream zplane = new ScummFile.fromUint8Array(vs.zplanes[0]);
     //zplane.seek(ay * 40);
     //zplane.seek(ax >> 3);
-    
+
     int x = 0, y = 0;
     while (true) {
       int b = data.read();
@@ -220,8 +220,8 @@ class Costume extends Resource {
         //int mask = zplane.read();
         //zplane.seek(-1);
         //bool masked = (mask & maskbit) != 0;
-        if (color != 0 && !vs.isMasked(x+ax, y+ay, 1)) {
-          dst.write(palette[color]);  
+        if (color != 0 && !(vs.isMasked(x+ax, y+ay, 1) && clipped)) {
+          dst.write(palette[color]);
           dst.seek(-1);
         }
         dst.seek(320);
@@ -258,11 +258,11 @@ class CostumeAnimation {
   void operator []=(int index, AnimDefinition def) {
     animDefinitions[index] = def;
   }
-  
+
   AnimDefinition operator [](int index) {
     return animDefinitions[index];
   }
-  
+
   void forEach(Function f) {
     animDefinitions.forEach(f);
   }
@@ -298,19 +298,19 @@ class CostumeAnimationProgress {
   CostumeAnimationProgress() {
     animations = new Map<int, AnimProgress>();
   }
-  
+
   void operator []=(int index, AnimProgress def) {
     animations[index] = def;
   }
-  
+
   AnimProgress operator[](int index) {
     return animations[index];
   }
-  
+
   bool isDefined(int limb) {
     return animations.containsKey(limb);
   }
-  
+
   void progress() {
     animations.forEach((int k, AnimProgress v) {
       v.progress();
@@ -319,13 +319,13 @@ class CostumeAnimationProgress {
 }
 
 class AnimProgress extends AnimDefinition {
-  
+
   int current;
-  
+
   AnimProgress.fromAnimation(AnimDefinition def):super(def.start, def.length, def.loop) {
     this.current = def.start;
   }
-  
+
   void progress() {
     if (current < start + length) {
       current++;

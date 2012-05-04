@@ -30,7 +30,7 @@ class Room {
   int width;
   int height;
   int objectCount;
-  Map<int, OBIM> obims;
+  Map<int, RoomObject> objs;
   Map<int, Script> scripts;
   Palette palette;
   Stream bg;
@@ -39,7 +39,7 @@ class Room {
   Script exit;
 
   Room(this.index, this.name) {
-    this.obims = new Map<int, OBIM>();
+    this.objs = new Map<int, RoomObject>();
     this.scripts = new Map<int, Script>();
   }
 
@@ -57,13 +57,7 @@ class Room {
       data.readTLV("SCAL");
       //readImages(data.readTLV("RMIM"));
       bg = data.readTLV("RMIM");
-      for (int i = 0; i < objectCount; i++) {
-        OBIM obim = readOBIM(data.readTLV("OBIM"));
-        obims[obim.id] = obim;
-      }
-      for (int i = 0; i < objectCount; i++) {
-        data.readTLV("OBCD");
-      }
+      readObjects(data);
       data.readTLV("EXCD");
       Stream encd = data.readTLV("ENCD");
       entry = new Script(10002, 0, 0);
@@ -73,6 +67,21 @@ class Room {
         Script s = readLocalScript(data.readTLV("LSCR"));
         scripts[s.index] = s;
       }
+  }
+
+  void readObjects(Stream data) {
+    for (int i = 0; i < objectCount; i++) {
+      Stream obim = data.readTLV("OBIM");
+      RoomObject obj = new RoomObject.fromOBIM(obim);
+      //obims[obim.id] = obim;
+      //objs[obim.id] = new RoomObject(obim.id);
+      //objs[obim.id].obim = obim;
+      objs[obj.id] = obj;
+    }
+    for (int i = 0; i < objectCount; i++) {
+      readOBCD(data.readTLV("OBCD"));
+      //objs[obcd.id].obcd = obcd;
+    }
   }
 
   void readPalette(Stream data) {
@@ -88,6 +97,7 @@ class Room {
     //im00 = data.readTLV("IM00");
   }
 
+  /*
   OBIM readOBIM(Stream obim) {
     Stream objHeader = obim.readTLV("IMHD");
     int id = objHeader.read16LE();
@@ -105,26 +115,29 @@ class Room {
     }
     return new OBIM(id, flags, x, y, width, height, images);
   }
+  */
+
+  void readOBCD(Stream obcd) {
+    Stream header = obcd.readTLV("CDHD");
+    int id = header.read16LE();
+    int x = header.read();
+    int y = header.read();
+    int w = header.read();
+    int h = header.read();
+    int flags = header.read();
+    int parent = header.read();
+    int walkx = header.read16LE();
+    int walky = header.read16LE();
+    int dir = header.read();
+    //return new OBCD(id, x, y, w, h, flags, parent, walkx, walky, dir);
+  }
 
   Script readLocalScript(Stream data) {
     int id = data.read();
     return new Script.local(id, this.index, data.subStream(data.length() - 1));
   }
-}
 
-class OBIM {
-  int id;
-  int flags;
-  int x, y, w, h;
-  List<Stream> images;
-
-  OBIM(int id, int flags, int x, int y, int w, int h, List<Stream> images) {
-    this.id = id;
-    this.flags = flags;
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
-    this.images = images;
+  RoomObject getObject(int id) {
+    return objs[id];
   }
 }

@@ -31,28 +31,43 @@ class Message {
   bool wrapping;
   String value;
 
-  abstract void printString(ExecutionContext ctx);
+  abstract void printString(ScummVM vm);
 
   void setValue(String value) {
     this.value = value;
   }
 
-  String format(ExecutionContext ctx) {
+  String format(ScummVM vm) {
     List<int> sb = new List<int>();
     Stream ins = new ScummFile.fromList(value.charCodes());
     while (!ins.eof()) {
       int chr = ins.read();
       if (chr == 0xff) {
         chr = ins.read();
-        if (chr == 1 || chr == 2 || chr == 3 || chr == 8) {
+        if (chr == 1) {
+          sb.add(0x0d);
+        } else if (chr == 2) {
+          // End of String, no final newline
+          break;
+        } else if (chr == 3 || chr == 8) {
           sb.add(0xff);
           sb.add(chr);
         } else if (chr == 4) {
-          int v = ctx.getVar(ins.read16LE()); // FIXME
+          int v = vm.getVar(ins.read16LE()); // FIXME
           sb.addAll(v.toString().charCodes());
         } else {
           throw new Exception("WTF?");
         }
+      } else if (chr == 0xfa) {
+        sb.add(0x20);
+      } else if (chr == 0) {
+        sb.add(0x0d);
+      } else if (chr == 0x82) {
+        sb.add(0xe9);
+      } else if (chr == 0x88) {
+        sb.add(0xea);
+      } else if (chr == 0x8b) {
+        sb.add(0xef);
       } else {
         sb.add(chr);
       }

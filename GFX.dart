@@ -27,10 +27,11 @@ class GFX {
   VirtualScreen verb;
   CanvasElement canvas;
 
-  int cam_x;
-  int cam_dest_x;
+  int cam_x = 160;
+  int cam_dest_x = 160;
   int screenStartStrip;
   Palette currentPalette;
+  bool needBGRedraw = false;
 
   GFX(ResourceManager resMgr) {
     this.resMgr = resMgr;
@@ -57,17 +58,22 @@ class GFX {
     cam_x = x;
     cam_dest_x = x;
     // FIXME check camera min & max positions
+    needBGRedraw = true;
   }
 
-  void moveCamera() {
-    main.screenStartStrip = (cam_x / 8).floor() - 20;
-    main.xstart = screenStartStrip * 8;
+  void moveCamera() { // FIXME should be in VirtualScreen?
+    main.screenStartStrip = (cam_x >> 3) - 20;
+    main.xstart = main.screenStartStrip * 8;
   }
 
   void redrawBGStrip(Room room, int start, int count) {
-    int s = start + main.screenStartStrip;
-    this.currentPalette = room.palette;
-    main.drawBitmap(room, s, 0, room.width, main.height, s, count, 0);
+    if (needBGRedraw) {
+      int s = start + main.screenStartStrip;
+      this.currentPalette = room.palette;
+      //main.drawBitmap(room, s, 0, room.width, main.height, s, count, 0);
+      main.drawBackground(room, s, count);
+      needBGRedraw = false;
+    }
   }
 
   void drawDirty() {
@@ -82,18 +88,12 @@ class GFX {
   }
 
   void drawCostume(Actor a) {
-    // FIXME setup scale
-    for(int i = 0; i < 16; i++) {
-      drawLimb(a, i);
-    }
-    a.progress.progress();
+    a.drawCostume(main);
   }
 
-  void drawLimb(Actor a, int limb) {
-    if (!a.progress.isDefined(limb)) {
-      return;
-    }
-    int i = a.progress[limb].current;
-    a.costume.drawImage(main, limb, i, a.x, a.y);
+  void drawObject(RoomObject obj) {
+    Stream src = obj.images[1]; // FIXME Object state
+
+    main.drawBitmap(src, obj.x >> 3, obj.y, obj.width, obj.height, 0, obj.width >> 3, 1, obj.flags); // FIXME zpLen
   }
 }

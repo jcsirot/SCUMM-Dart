@@ -70,6 +70,14 @@ class ScummFile implements Stream, WritableStream {
     return data[ptr++];
   }
 
+  int readS() {
+    int x = data[ptr++];
+    if (x > 0x7f) {
+      return x - 0x100;
+    }
+    return x;
+  }
+
   void reset() {
     this.ptr = 0;
   }
@@ -110,7 +118,7 @@ class ScummFile implements Stream, WritableStream {
     int x = data[ptr++] | (data[ptr++] << 8);
     return x;
   }
-  
+
   String readString(int len) {
     return new String.fromCharCodes(array(len));
   }

@@ -21,10 +21,31 @@
 
 class RoomObject {
 
-  RoomObject(OBIM obim) {
-    //this.id = id;
-  }
+  static final int MASK_OR = 1;
 
-  static OBIM fromOBIM(Stream obim) {
+  int id;
+  int numIm;
+  int numZp;
+  int flags;
+  int x, y;
+  int width, height;
+  Map<int, Stream> images;
+
+  RoomObject.fromOBIM(Stream data) {
+    Stream header = data.readTLV("IMHD");
+    id = header.read16LE();
+    numIm = header.read16LE();
+    numZp = header.read16LE();
+    flags = header.read();
+    flags |= MASK_OR;
+    header.read(); // unknown
+    x = header.read16LE();
+    y = header.read16LE();
+    width = header.read16LE();
+    height = header.read16LE();
+    images = new Map<int, Stream>();
+    for (int i = 1; i <= numIm; i++) {
+      images[i] = data.readTLV("IM0$i");
+    }
   }
 }

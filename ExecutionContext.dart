@@ -39,14 +39,13 @@ class ExecutionContext {
   int delay;
 
   ScummVM vm;
-  GlobalContext global;
   /* parent context for nested scripts */
   ExecutionContext parent;
 
-  ExecutionContext.root(GlobalContext global, Script script, List<int> params) {
+  ExecutionContext.root(ScummVM vm, Script script, List<int> params) {
     this.script = script;
     this.data = script.data.dup();
-    this.global = global;
+    this.vm = vm;
     this.local = params;
     this.stack = new List<int>();
     this.parent = null;
@@ -58,7 +57,7 @@ class ExecutionContext {
   ExecutionContext.fork(ExecutionContext ctx, Script script, List<int> params) {
     this.script = script;
     this.data = script.data.dup();
-    this.global = ctx.global;
+    this.vm = ctx.vm;
     this.parent = ctx;
     this.local = params;
     this.stack = new List<int>();
@@ -72,16 +71,16 @@ class ExecutionContext {
     return ctx;
   }
 
-  void spawn(int scriptId, List<int> params) {
-    global.spawn(scriptId, params);
-  }
-
   void setStatus(int status) {
     this.status = status;
   }
 
   int getStatus() {
     return this.status;
+  }
+
+  void kill() {
+    setStatus(DEAD);
   }
 
   void freeze(bool force) {
@@ -94,10 +93,6 @@ class ExecutionContext {
     if (frozenCount > 0) {
       frozenCount--;
     }
-  }
-
-  void freezeScripts(bool unfreeze, bool force) {
-    global.freezeScripts(unfreeze, force);
   }
 
   void delayExecution(int delay) {
@@ -114,65 +109,12 @@ class ExecutionContext {
     }
   }
 
-  int getVar(int varAddr) {
-    // FIXME Scumm V5 uses indirect word variables - NYI here
-    if ((varAddr & 0x8000) != 0) {
-      /* bit variable */
-      throw new Exception("Bit variable NYI");
-    } else if ((varAddr & 0x4000) != 0) {
-      /* local variable */
-      return getLocalVar(varAddr & 0xf);
-    } else if ((~varAddr & 0xe000) != 0) {
-      /* global variable */
-      return global.getGlobalVar(varAddr & 0x1fff);
-    } else {
-      throw new Exception("Unknown variable type");
-    }
-    return 0;
-  }
-
-  void setVar(int varAddr, int value) {
-    // FIXME Scumm V5 uses indirect word variables - NYI here
-    if ((varAddr & 0x8000) != 0) {
-      /* bit variable */
-      throw new Exception("Bit variable NYI");
-    } else if ((varAddr & 0x4000) != 0) {
-      /* local variable */
-      setLocalVar(varAddr & 0xf, value);
-    } else if ((~varAddr & 0xe000) != 0) {
-      /* global variable */
-      global.setGlobalVar(varAddr & 0x1fff, value);
-    } else {
-      throw new Exception("Unknown variable type");
-    }
-  }
-
-  void setGlobalVar(int index, int value) {
-    global.setGlobalVar(index, value);
-  }
-
-  int getGlobalVar(int index) {
-    return global.getGlobalVar(index);
-  }
-
   int getLocalVar(int index) {
     return local[index];
   }
 
   int setLocalVar(int index, int value) {
     local[index] = value;
-  }
-
-  void storeArray(int index, List<int> array) {
-    global.storeArray(index, array);
-  }
-
-  void storeArrayData(int arrayIndex, int index, int value) {
-    global.storeArrayData(arrayIndex, index, value);
-  }
-
-  void freeArray(int index) {
-    global.freeArray(index);
   }
 
   bool isSuspended() {
@@ -187,18 +129,6 @@ class ExecutionContext {
     this.active = true;
   }
 
-  bool isScriptRunning(int scriptId) {
-    return global.isScriptRunning(scriptId);
-  }
-
-  void stopScript(int scriptId) {
-    global.stopScript(scriptId);
-  }
-
-  void startRoom(int roomId) {
-    global.startRoom(roomId);
-  }
-
   /* heap operations */
 
   void push(int value) {
@@ -207,64 +137,5 @@ class ExecutionContext {
 
   int pop() {
     return stack.removeLast();
-  }
-
-  /* Resources */
-
-  Script getScript(int id) {
-    return global.getScript(id);
-  }
-
-  Costume getCostume(int id) {
-    return global.getCostume(id);
-  }
-
-  void loadCharsetResource(int id) {
-    global.loadCharsetResource(id);
-  }
-
-  /* GFX */
-
-  void initScreens(int b, int h) {
-    global.initScreens(b, h);
-  }
-
-  void beginCutScene(List<int> params) {
-    // FIXME initialize the cut scene
-    global.spawn(getVar(GlobalContext.CUTSCENE_START_SCRIPT), params);
-  }
-
-  void setCameraAt(int xpos) {
-    global.setCameraAt(xpos);
-  }
-
-  void adjustPalette(int index, int r, int g, int b) {
-    global.adjustPalette(index, r, g, b);
-  }
-
-  /* Actors */
-
-  void putActorInRoom(int actorId, int roomId) {
-    global.putActorInRoom(actorId, roomId);
-  }
-  
-  void putActor(int actorId, int x, int y) {
-    global.putActor(actorId, x, y);
-  }
-  
-  void putActorIfInCurrentRoom(int actorId) {
-    global.putActorIfInCurrentRoom(actorId);
-  }
-
-  int getActorRoom(int actorId) {
-    return global.getActorRoom(actorId);
-  }
-  
-  void setActorCostume(int actorId, int costumeId) {
-    global.setActorCostume(actorId, costumeId);
-  }
-  
-  void animateActor(int actorId, int animation) {
-    global.animateActor(actorId, animation);
   }
 }

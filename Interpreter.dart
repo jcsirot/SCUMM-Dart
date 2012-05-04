@@ -24,11 +24,15 @@ class Interpreter {
   //Stream data;
   Map<int, Function> opcodes;
 
+  Function log;
+  Function data;
+
   Interpreter() {
     opcodes = new Map<int, Function>();
     opcodes[0x00] = op_stopObjectCode;
     opcodes[0x01] = OP3(op_putActor, false, false, false);
     opcodes[0x03] = OP1(op_getActorRoom, false);
+    opcodes[0x05] = OP1(op_drawObject, false);
     opcodes[0x08] = OP1(op_isNotEqual, false);
     opcodes[0x0a] = OP3(op_startScript, false, false, false);
     opcodes[0x0c] = op_resourceRoutine;
@@ -53,9 +57,9 @@ class Interpreter {
     opcodes[0x3c] = OP1(op_stopSound, false);
     opcodes[0x40] = op_cutScene;
     opcodes[0x41] = OP3(op_putActor, false, true, false);
-    opcodes[0x44] = op_isLess(false);
+    opcodes[0x44] = OP1(op_isLess, false);
     opcodes[0x46] = op_increment;
-    opcodes[0x48] = op_isEqual(false);
+    opcodes[0x48] = OP1(op_isEqual, false);
     opcodes[0x4a] = OP3(op_startScript, false, false, true);
     opcodes[0x51] = OP2(op_animateActor, false, true);
     opcodes[0x58] = op_override;
@@ -65,11 +69,12 @@ class Interpreter {
     opcodes[0x68] = OP1(op_isScriptRunning, false);
     opcodes[0x6d] = OP2(op_putActorInRoom, false, true);
     opcodes[0x72] = OP1(op_loadRoom, false);
-    opcodes[0x78] = op_isGreater(false);
-    opcodes[0x7a] = op_verbOps(false);
+    opcodes[0x78] = OP1(op_isGreater, false);
+    opcodes[0x7a] = OP1(op_verbOps, false);
     opcodes[0x80] = op_breakHere;
     opcodes[0x81] = OP3(op_putActor, true, false, false);
     opcodes[0x83] = OP1(op_getActorRoom, true);
+    opcodes[0x85] = OP1(op_drawObject, true);
     opcodes[0x88] = OP1(op_isNotEqual, true);
     opcodes[0x91] = OP2(op_animateActor, true, false);
     opcodes[0x93] = OP1(op_actorOps, true);
@@ -87,8 +92,8 @@ class Interpreter {
     opcodes[0xb8] = OP1(op_isLessEquals, true);
     opcodes[0xbc] = OP1(op_stopSound, true);
     opcodes[0xc1] = OP3(op_putActor, true, true, false);
-    opcodes[0xc4] = op_isLess(true);
-    opcodes[0xc8] = op_isEqual(true);
+    opcodes[0xc4] = OP1(op_isLess, true);
+    opcodes[0xc8] = OP1(op_isEqual, true);
     opcodes[0xcc] = op_pseudoRoom;
     opcodes[0xd1] = OP2(op_animateActor, true, true);
     opcodes[0xda] = OP1(op_add, true);
@@ -97,57 +102,63 @@ class Interpreter {
     opcodes[0xe8] = OP1(op_isScriptRunning, true);
     opcodes[0xed] = OP2(op_putActorInRoom, true, true);
     opcodes[0xf2] = OP1(op_loadRoom, true);
-    opcodes[0xf8] = op_isGreater(true);
-    opcodes[0xfa] = op_verbOps(true);
+    opcodes[0xf8] = OP1(op_isGreater, true);
+    opcodes[0xfa] = OP1(op_verbOps, true);
   }
 
-  void run(ExecutionContext ctx) {
-    //data = ctx.data;
+  void run(ScummVM vm) {
+    this.log = (String str) {
+      print("[SCRIPT-${vm.currentThread.script.index}] $str");
+    };
+    this.data = () {
+      return vm.currentThread.data;
+    };
     while (true) {
-      if (ctx.getStatus() == ExecutionContext.DEAD) {
+      ExecutionContext t = vm.currentThread;
+      if (t.getStatus() == ExecutionContext.DEAD) {
         return;
       }
-      if (ctx.isSuspended()) {
+      if (t.isSuspended()) {
         return;
       }
-      if (ctx.data.eof()) {
+      if (t.data.eof()) {
         throw new Exception("End of the script has been reached.");
       }
-      exec(ctx);
+      exec(vm);
     }
   }
 
-  void exec(ExecutionContext ctx) {
-    int opcode = ctx.data.read();
+  void exec(ScummVM vm) {
+    int opcode = data().read();
     if (!opcodes.containsKey(opcode)) {
       throw new Exception("Unsupported script opcode: 0x${opcode.toRadixString(16)}");
     }
-    opcodes[opcode](ctx);
+    opcodes[opcode](vm);
   }
 
   /* ===== Utilities methods ===== */
 
   Function OP1(Function op, bool indirect) {
-    return (ExecutionContext ctx) => op(ctx, indirect);
+    return (ScummVM vm) => op(vm, indirect);
   }
 
   Function OP2(Function op, bool indirect1, bool indirect2) {
-    return (ExecutionContext ctx) => op(ctx, indirect1, indirect2);
+    return (ScummVM vm) => op(vm, indirect1, indirect2);
   }
 
   Function OP3(Function op, bool indirect1, bool indirect2, bool indirect3) {
-    return (ExecutionContext ctx) => op(ctx, indirect1, indirect2, indirect3);
+    return (ScummVM vm) => op(vm, indirect1, indirect2, indirect3);
   }
 
-  List<int> readVarargs(ExecutionContext ctx) {
+  List<int> readVarargs(ScummVM vm) {
     List<int> args = new List<int>();
     while (true) {
-      int subOpcode = ctx.data.read();
+      int subOpcode = data().read();
       if (subOpcode == 0xff) {
         break;
       }
       bool ind = (subOpcode & 0x80) > 0;
-      args.add(ind ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE());
+      args.add(ind ? vm.getVar(data().read16LE()) : data().read16LE());
     }
     while(args.length < 16) { // FIXME length?
       args.add(0);
@@ -155,75 +166,78 @@ class Interpreter {
     return args;
   }
 
-  int jmp(ExecutionContext ctx, bool cond) {
-    int offset = ctx.data.read16LE();
+  int jmp(ScummVM vm, bool cond) {
+    int offset = data().read16LE();
     if (cond) {
-      ctx.data.seek(offset);
+      data().seek(offset);
     }
     return offset;
   }
 
   /* ===== Opcodes implementations ===== */
 
-  void op_startScript(ExecutionContext ctx, bool indirect, bool recursive, bool freezeResistant) {
-    int scriptId = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    List<int> params = readVarargs(ctx);
-    print("op_startScript script=$scriptId params=$params");
-    //Script script = ctx.getScript(scriptId);
-    ctx.spawn(scriptId, params);
+  void op_startScript(ScummVM vm, bool indirect, bool recursive, bool freezeResistant) {
+    int scriptId = indirect ? vm.getVar(data().read16LE()) : data().read();
+    List<int> params = readVarargs(vm);
+    log("op_startScript script=$scriptId params=$params");
+    //Script script = vm.getScript(scriptId);
+    vm.spawnWithId(scriptId, params);
     //ExecutionContext fork = ctx.fork(script, params);
     //this.run(fork);
+    /* Reinit Log after exiting nested script */
+    //initLog(vm);
+    log("op_startScript exit spawned script");
   }
 
-  void op_resourceRoutine(ExecutionContext ctx) {
-    int subOpcode = ctx.data.read();
+  void op_resourceRoutine(ScummVM vm) {
+    int subOpcode = data().read();
     // print("op_resourceRoutine opcode=0x${subOpcode.toRadixString(16)}");
     switch (subOpcode & 0x1f) {
     case 0x01:
-      int resId = ctx.data.read();
-      print("op_resourceRoutine load script=$resId");
-      ctx.getScript(resId);
+      int resId = data().read();
+      log("op_resourceRoutine load script=$resId");
+      vm.getScript(resId);
       break;
     case 0x03:
-      int resId = ctx.data.read();
-      print("op_resourceRoutine load costume=$resId");
-      ctx.getCostume(resId);
+      int resId = data().read();
+      log("op_resourceRoutine load costume=$resId");
+      vm.getCostume(resId);
       break;
     case 0x04:
-      int resId = ctx.data.read();
-      print("op_resourceRoutine load room=$resId");
+      int resId = data().read();
+      log("op_resourceRoutine load room=$resId");
       // load room. Do we need to do something?
       break;
     case 0x09:
-      int resId = ctx.data.read();
+      int resId = data().read();
       // FIXME lock script
       break;
     case 0xc:
-      int resId = ctx.data.read();
+      int resId = data().read();
       break;
     case 0x11:
       // FIXME clear the heap
       break;
     case 0x12:
-      int resId = ctx.data.read();
-      ctx.loadCharsetResource(resId);
-      print("op_resourceRoutine load charset=$resId");
+      int resId = data().read();
+      vm.loadCharsetResource(resId);
+      log("op_resourceRoutine load charset=$resId");
       break;
     default:
       throw new Exception("Unsupported op_resourceRoutine sub-opcode=0x${subOpcode.toRadixString(16)}");
     }
   }
-  
-  void op_move(ExecutionContext ctx, bool indirect) {
-    int target = ctx.data.read16LE();
-    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    ctx.setVar(target, value);
-    //print("[SCRIPT-${ctx.script.index}] op_move target=$target param=$value");
-    print("op_move target=$target param=$value");
+
+  void op_move(ScummVM vm, bool indirect) {
+    int target = data().read16LE();
+    int value = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    vm.setVar(target, value);
+    //print("[SCRIPT-${vm.script.index}] op_move target=$target param=$value");
+    log("op_move target=$target param=$value");
   }
 
-  void op_cursorCommand(ExecutionContext ctx) {
-    int subOpcode = ctx.data.read();
+  void op_cursorCommand(ScummVM vm) {
+    int subOpcode = data().read();
     switch (subOpcode) {
     case Cursor.SO_CURSOR_ON:
     case Cursor.SO_CURSOR_OFF:
@@ -237,219 +251,214 @@ class Interpreter {
       // FIXME
       break;
     case Cursor.SO_CHARSET_SET:
-      int idx = ctx.data.read();
+      int charsetId = data().read();
+      log("op_cursorCommand setCharset=$charsetId");
       /* FIXME set charset */
       break;
     default:
       throw new Exception("Unsupported op_cursorCommand sub-opcode=0x${subOpcode.toRadixString(16)}");
     }
-    ctx.setGlobalVar(GlobalContext.CURSOR_STATE, 1);
-    print("op_cursorCommand opcode=0x${subOpcode.toRadixString(16)}");
+    vm.setGlobalVar(ScummVM.CURSOR_STATE, 1);
+    log("op_cursorCommand opcode=0x${subOpcode.toRadixString(16)}");
   }
 
-  Function op_isEqual(bool indirect) {
-    return (ExecutionContext ctx) => op_isEqual_(ctx, indirect);
+  void op_isEqual(ScummVM vm, bool indirect) {
+    int varAddr = data().read16LE();
+    int value = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    int offset = jmp(vm, value != vm.getVar(varAddr));
+    log("op_isEqual var=$varAddr offset=$offset");
   }
 
-  void op_isEqual_(ExecutionContext ctx, bool indirect) {
-    int varAddr = ctx.data.read16LE();
-    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    int offset = jmp(ctx, value != ctx.getVar(varAddr));
-    print("op_isEqual var=$varAddr offset=$offset");
+  void op_isNotEqual(ScummVM vm, bool indirect) {
+    int varAddr = data().read16LE();
+    int value = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    int offset = jmp(vm, value == vm.getVar(varAddr));
+    log("op_isNotEqual var=$varAddr offset=$offset");
   }
 
-  void op_isNotEqual(ExecutionContext ctx, bool indirect) {
-    int varAddr = ctx.data.read16LE();
-    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    int offset = jmp(ctx, value == ctx.getVar(varAddr));
-    print("op_isNotEqual var=$varAddr offset=$offset");
-  }
-
-  void op_stringOps(ExecutionContext ctx) {
-    int subOpcode = ctx.data.read();
+  void op_stringOps(ScummVM vm) {
+    int subOpcode = data().read();
     switch (subOpcode & 0x1f) {
     case 1:
-      int idx = ctx.data.read();
-      List<int> array = ctx.data.readArray();
-      print("op_stringOps Load String index=$idx array=$array");
-      ctx.storeArray(idx, array);
+      int idx = data().read();
+      List<int> array = data().readArray();
+      log("op_stringOps Load String index=$idx array=$array");
+      vm.storeArray(idx, array);
       break;
     case 2:
     case 3:
-      int arrIdx = ctx.data.read();
-      int idx = ctx.data.read();
-      int value = ctx.data.read();
-      ctx.storeArrayData(arrIdx, idx, value);
+      int arrIdx = data().read();
+      int idx = data().read();
+      int value = data().read();
+      vm.storeArrayData(arrIdx, idx, value);
       break;
     case 4:
     case 5:
-      int index = ctx.data.read();
-      int len = ctx.data.read();
+      int index = data().read();
+      int len = data().read();
       if (len == 0) {
-        ctx.freeArray(index);
+        vm.freeArray(index);
       } else {
-        ctx.storeArray(index, new List<int>(len));
+        vm.storeArray(index, new List<int>(len));
       }
       break;
     default:
-      print("Unsupported stringOps opcode ${subOpcode.toRadixString(16)}");
+      log("Unsupported stringOps opcode ${subOpcode.toRadixString(16)}");
     }
-    print("op_stringOps opcode=${subOpcode.toRadixString(16)}");
+    log("op_stringOps opcode=${subOpcode.toRadixString(16)}");
   }
 
-  void op_notEqualZero(ExecutionContext ctx) {
-    int varAddr = ctx.data.read16LE();
-    int offset = jmp(ctx, ctx.getVar(varAddr) == 0);
-    print("op_notEqualZero var=$varAddr offset=$offset");
+  void op_notEqualZero(ScummVM vm) {
+    int varAddr = data().read16LE();
+    int offset = jmp(vm, vm.getVar(varAddr) == 0);
+    log("op_notEqualZero var=$varAddr offset=$offset");
   }
 
-  void op_equalZero(ExecutionContext ctx) {
-    int varAddr = ctx.data.read16LE();
-    int offset = jmp(ctx, ctx.getVar(varAddr) != 0);
-    print("op_equalZero var=$varAddr offset=$offset");
+  void op_equalZero(ScummVM vm) {
+    int varAddr = data().read16LE();
+    int offset = jmp(vm, vm.getVar(varAddr) != 0);
+    log("op_equalZero var=$varAddr offset=$offset");
   }
 
   Function op_setVarRange(bool useByteValues) {
-    return (ExecutionContext ctx) => op_setVarRange_(ctx, useByteValues);
+    return (ScummVM vm) => op_setVarRange_(vm, useByteValues);
   }
 
-  void op_setVarRange_(ExecutionContext ctx, bool useByteValues) {
-    int index = ctx.data.read16LE();
-    int len = ctx.data.read();
+  void op_setVarRange_(ScummVM vm, bool useByteValues) {
+    int index = data().read16LE();
+    int len = data().read();
     for (int i = 0; i < len; i++) {
-      ctx.setGlobalVar(index + i, useByteValues ? ctx.data.read() : ctx.data.read16LE());
+      vm.setGlobalVar(index + i, useByteValues ? data().read() : data().read16LE());
     }
-    print("op_setVarRange/useByteValues=$useByteValues var=$index len=$len");
+    log("op_setVarRange/useByteValues=$useByteValues var=$index len=$len");
   }
 
-  void op_expression(ExecutionContext ctx) {
-    int target = ctx.data.read16LE();
+  void op_expression(ScummVM vm) {
+    int target = data().read16LE();
     while (true) {
-      int subOpcode = ctx.data.read();
+      int subOpcode = data().read();
       if (subOpcode == 0xff) {
         break;
       }
       switch (subOpcode) {
       case 0x1:
-        int value = ctx.data.read16LE();
-        ctx.push(value);
-        print("op_expression push value=$value");
+        int value = data().read16LE();
+        vm.currentThread.push(value);
+        log("op_expression push value=$value");
         break;
       case 0x81:
-        int varIdx = ctx.data.read16LE();
-        ctx.push(ctx.getVar(varIdx));
-        print("op_expression push var=$varIdx");
+        int varIdx = data().read16LE();
+        vm.currentThread.push(vm.getVar(varIdx));
+        log("op_expression push var=$varIdx");
         break;
       case 0x2:
-        int v1 = ctx.pop();
-        int v2 = ctx.pop();
+        int v1 = vm.currentThread.pop();
+        int v2 = vm.currentThread.pop();
         int value = v2 + v1;
-        ctx.push(value);
-        print("op_expression add");
+        vm.currentThread.push(value);
+        log("op_expression add");
+        break;
       case 0x3:
-        int v1 = ctx.pop();
-        int v2 = ctx.pop();
+        int v1 = vm.currentThread.pop();
+        int v2 = vm.currentThread.pop();
         int value = v2 - v1;
-        ctx.push(value);
-        print("op_expression sub");
+        vm.currentThread.push(value);
+        log("op_expression sub");
         break;
       case 0x4:
-        int v1 = ctx.pop();
-        int v2 = ctx.pop();
+        int v1 = vm.currentThread.pop();
+        int v2 = vm.currentThread.pop();
         int value = v2 * v1;
-        ctx.push(value);
-        print("op_expression mult");
+        vm.currentThread.push(value);
+        log("op_expression mult");
         break;
       case 0x5:
-        int v1 = ctx.pop();
-        int v2 = ctx.pop();
+        int v1 = vm.currentThread.pop();
+        int v2 = vm.currentThread.pop();
         int value = v2 / v1;
-        ctx.push(value);
-        print("op_expression div");
+        vm.currentThread.push(value);
+        log("op_expression div");
         break;
       case 0x6:
         // FIXME execute opcode
-        throw new Exception("NYI");
+        throw new Exception("op_expression NYI");
       default:
-        print("Unsupported op_expression opcode=0x${subOpcode.toRadixString(16)}");
+        log("Unsupported op_expression opcode=0x${subOpcode.toRadixString(16)}");
       }
     }
-    ctx.setGlobalVar(target, ctx.pop());
-    print("op_expression target=$target");
+    vm.setVar(target, vm.currentThread.pop());
+    log("op_expression target=$target");
   }
 
-  void op_roomOps(ExecutionContext ctx) {
-    //print("script #$index, ptr=0x${(ctx.data.pointer()).toRadixString(16)}");
-    int subOpcode = ctx.data.read();
-    print("op_roomOps opcode=0x${subOpcode.toRadixString(16)}");
+  void op_roomOps(ScummVM vm) {
+    //print("script #$index, ptr=0x${(data().pointer()).toRadixString(16)}");
+    int subOpcode = data().read();
+    log("op_roomOps opcode=0x${subOpcode.toRadixString(16)}");
     switch (subOpcode) {
     case 0x03:
-      int b = ctx.data.read16LE();
-      int h = ctx.data.read16LE();
-      print ("op_RoomOps Init Screen b=$b, h=$h");
-      ctx.initScreens(b, h);
+      int b = data().read16LE();
+      int h = data().read16LE();
+      log("op_roomOps Init Screen b=$b, h=$h");
+      vm.initScreens(b, h);
       break;
     case 0x04:  // SO_ROOM_PALETTE
-      int r = ctx.data.read16LE();
-      int g = ctx.data.read16LE();
-      int b = ctx.data.read16LE();
-      int aux = ctx.data.read();
-      int index = ((aux & 0x80) != 0) ? ctx.getVar(ctx.data.read()) : ctx.data.read();
-      print ("op_RoomOps Adjust Room Palette index=$index, r=$r, g=$g, b=$b");
-      ctx.adjustPalette(index, r, g, b);
+      int r = data().read16LE();
+      int g = data().read16LE();
+      int b = data().read16LE();
+      int aux = data().read();
+      int index = ((aux & 0x80) != 0) ? vm.getVar(data().read()) : data().read();
+      log("op_roomOps Adjust Room Palette index=$index, r=$r, g=$g, b=$b");
+      vm.adjustPalette(index, r, g, b);
       break;
     case 0x0a:
-      int effect = ctx.data.read16LE();
+      int effect = data().read16LE();
       break;
     case 0x8a:
-      int effect = ctx.getVar(ctx.data.read16LE());
+      int effect = vm.getVar(data().read16LE());
       break;
     case 0xe4:
-      int r = ctx.getVar(ctx.data.read16LE());
-      int g = ctx.getVar(ctx.data.read16LE());
-      int b = ctx.getVar(ctx.data.read16LE());
-      int index = ((ctx.data.read() & 0x80) == 0) ? ctx.data.read() : ctx.getVar(ctx.data.read16LE());
-      print ("op_RoomOps Adjust Room Palette index=$index, r=$r, g=$g, b=$b");
-      ctx.adjustPalette(index, r, g, b);
+      int r = vm.getVar(data().read16LE());
+      int g = vm.getVar(data().read16LE());
+      int b = vm.getVar(data().read16LE());
+      int index = ((data().read() & 0x80) == 0) ? data().read() : vm.getVar(data().read16LE());
+      log("op_roomOps Adjust Room Palette index=$index, r=$r, g=$g, b=$b");
+      vm.adjustPalette(index, r, g, b);
       break;
     default:
       throw new Exception("Unsupported op_roomOps sub-opcode 0x${subOpcode.toRadixString(16)}");
     }
   }
 
-  void op_stopObjectCode(ExecutionContext ctx) {
-    ctx.setStatus(ExecutionContext.DEAD);
-    //ctx.stopThisScript();
-    print("op_stopObjectCode");
+  void op_stopObjectCode(ScummVM vm) {
+    //vm.currentThread.setStatus(ExecutionContext.DEAD);
+    vm.currentThread.kill();
+    //vm.stopThisScript();
+    log("op_stopObjectCode");
   }
 
-  Function op_verbOps(bool indirect) {
-    return (ExecutionContext ctx) => op_verbOps_(ctx, indirect);
-  }
-
-  void op_verbOps_(ExecutionContext ctx, bool indirect) {
-    int verbId = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
+  void op_verbOps(ScummVM vm, bool indirect) {
+    int verbId = indirect ? vm.getVar(data().read16LE()) : data().read();
     while (true) {
-      int subOpcode = ctx.data.read();
+      int subOpcode = data().read();
       if (subOpcode == 0xff) {
         break;
       }
-      print("op_verbOps verbId=$verbId sub-opcode=0x${subOpcode.toRadixString(16)}");
+      log("op_verbOps verbId=$verbId sub-opcode=0x${subOpcode.toRadixString(16)}");
       switch (subOpcode) {
       case 0x02:
-        List<int> verbName = ctx.data.readArray();
-        //ctx.setVerb(verbId, verbName);
+        List<int> verbName = data().readArray();
+        //vm.setVerb(verbId, verbName);
         break;
       case 0x03:
-        int verbColor = ctx.data.read();
-        //ctx.setVerbColor(verbId, verbColor);
+        int verbColor = data().read();
+        //vm.setVerbColor(verbId, verbColor);
         break;
       case 0x06:
-        //ctx.setVerbOn(verbId);
+        //vm.setVerbOn(verbId);
         break;
       case 0x83:
-        int verbColor = ctx.getVar(ctx.data.read16LE());
-        //ctx.setVerbColor(verbId, verbColor);
+        int verbColor = vm.getVar(data().read16LE());
+        //vm.setVerbColor(verbId, verbColor);
         break;
       default:
         throw new Exception("Unsupported op_verbOps sub-opcode 0x${subOpcode.toRadixString(16)}");
@@ -457,20 +466,20 @@ class Interpreter {
     }
   }
 
-  void op_pseudoRoom(ExecutionContext ctx) {
-    print("op_pseudoRoom");
+  void op_pseudoRoom(ScummVM vm) {
+    log("op_pseudoRoom");
     while (true) {
-      int val = ctx.data.read();
+      int val = data().read();
       if (val == 0) {
         break;
       }
-      int res = ctx.data.read();
+      int res = data().read();
       // resource mapper
     }
   }
 
-  void op_print(ExecutionContext ctx, bool indirect) {
-    int actorId = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
+  void op_print(ScummVM vm, bool indirect) {
+    int actorId = indirect ? vm.getVar(data().read16LE()) : data().read();
     Message msg;
     switch (actorId) {
     case 253:
@@ -482,30 +491,35 @@ class Interpreter {
     }
 
     while (true) {
-      int subOpcode = ctx.data.read();
+      int subOpcode = data().read();
       if (subOpcode == 0xff) {
         break;
       }
-      print("op_print actor=$actorId sub-opcode=$subOpcode");
       switch (subOpcode) {
       case 0x00:
-        msg.x = ctx.data.read16LE();
-        msg.y = ctx.data.read16LE();
+        msg.x = data().read16LE();
+        msg.y = data().read16LE();
+        log("op_print actor=$actorId x=${msg.x}, y=${msg.y}");
         break;
       case 0x01:
         // Color;
-        msg.color = ctx.data.read();
+        msg.color = data().read();
+        log("op_print actor=$actorId color=${msg.color}");
         break;
       case 0x04:
         // Center the text;
+        msg.center = true;
+        log("op_print actor=$actorId center");
         break;
       case 0x07:
         msg.overhead = true;
+        log("op_print actor=$actorId overhead");
         break;
       case 0x0f:
-        String s = new String.fromCharCodes(ctx.data.readArray());
+        String s = new String.fromCharCodes(data().readArray());
         msg.setValue(s);
-        msg.printString(ctx);
+        log("op_print actor=$actorId print string");
+        msg.printString(vm);
         return;
       default:
         throw new Exception("Unsupported op_print sub-opcode 0x${subOpcode.toRadixString(16)}");
@@ -513,222 +527,242 @@ class Interpreter {
     }
   }
 
-  Function op_isGreater(bool indirect) {
-    return (ExecutionContext ctx) => op_isGreater_(ctx, indirect);
+  void op_isGreater(ScummVM vm, bool indirect) {
+    int varId = data().read16LE();
+    int value = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    log("op_isGreater var=$varId value=$value");
+    int offset = jmp(vm, value <= vm.getVar(varId));
   }
 
-  void op_isGreater_(ExecutionContext ctx, bool indirect) {
-    int varId = ctx.data.read16LE();
-    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    print("op_isGreater var=$varId value=$value");
-    int offset = jmp(ctx, value <= ctx.getVar(varId));
+  void op_isLess(ScummVM vm, bool indirect) {
+    int varId = data().read16LE();
+    int value = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    log("op_isLess var=$varId value=$value");
+    int offset = jmp(vm, value >= vm.getVar(varId));
   }
 
-  Function op_isLess(bool indirect) {
-    return (ExecutionContext ctx) => op_isLess_(ctx, indirect);
+  void op_isLessEquals(ScummVM vm, bool indirect) {
+    int varId = data().read16LE();
+    int value = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    log("op_isLessEquals var=$varId value=$value");
+    int offset = jmp(vm, value > vm.getVar(varId));
   }
 
-  void op_isLess_(ExecutionContext ctx, bool indirect) {
-    int varId = ctx.data.read16LE();
-    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    print("op_isLess var=$varId value=$value");
-    int offset = jmp(ctx, value >= ctx.getVar(varId));
+  void op_jumpRelative(ScummVM vm) {
+    jmp(vm, true);
   }
 
-  void op_isLessEquals(ExecutionContext ctx, bool indirect) {
-    int varId = ctx.data.read16LE();
-    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    print("op_isLessEquals var=$varId value=$value");
-    int offset = jmp(ctx, value > ctx.getVar(varId));
+  void op_breakHere(ScummVM vm) {
+    log("op_breakHere");
+    vm.currentThread.suspend();
   }
 
-  void op_jumpRelative(ExecutionContext ctx) {
-    jmp(ctx, true);
+  void op_isScriptRunning(ScummVM vm, bool indirect) {
+    int varId = data().read16LE();
+    int scriptId = indirect ? vm.getVar(data().read16LE()) : data().read();
+    log("op_isScriptRunning result=$varId script=$scriptId");
+    vm.setGlobalVar(varId, vm.isScriptRunning(scriptId) ? 1 : 0); // FIXME
   }
 
-  void op_breakHere(ExecutionContext ctx) {
-    print("op_breakHere");
-    ctx.suspend();
+  void op_cutScene(ScummVM vm) {
+    List<int> params = readVarargs(vm);
+    log("op_cutScene params=$params");
+    vm.beginCutScene(params);
   }
 
-  void op_isScriptRunning(ExecutionContext ctx, bool indirect) {
-    int varId = ctx.data.read16LE();
-    int scriptId = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    print("op_isScriptRunning result=$varId script=$scriptId");
-    ctx.setGlobalVar(varId, ctx.isScriptRunning(scriptId) ? 1 : 0); // FIXME
+  void op_add(ScummVM vm, bool indirect) {
+    int varId = data().read16LE();
+    int value = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    log("op_add var=$varId value=$value");
+    vm.setVar(varId, vm.getVar(varId) + value);
   }
 
-  void op_cutScene(ExecutionContext ctx) {
-    List<int> params = readVarargs(ctx);
-    print("op_cutScene params=$params");
-    ctx.beginCutScene(params);
+  void op_sub(ScummVM vm, bool indirect) {
+    int varId = data().read16LE();
+    int value = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    log("op_sub var=$varId value=$value");
+    vm.setVar(varId, vm.getVar(varId) - value);
   }
 
-  void op_add(ExecutionContext ctx, bool indirect) {
-    int varId = ctx.data.read16LE();
-    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    print("op_add var=$varId value=$value");
-    ctx.setVar(varId, ctx.getVar(varId) + value);
-  }
-  
-  void op_sub(ExecutionContext ctx, bool indirect) {
-    int varId = ctx.data.read16LE();
-    int value = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    print("op_sub var=$varId value=$value");
-    ctx.setVar(varId, ctx.getVar(varId) - value);
-  }
-
-  void op_doSentence(ExecutionContext ctx, bool ind1, bool ind2, bool ind3) {
-    int verbId = ind1 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
+  void op_doSentence(ScummVM vm, bool ind1, bool ind2, bool ind3) {
+    int verbId = ind1 ? vm.getVar(data().read16LE()) : data().read();
     if (verbId == 0xfe) {
-      print("op_doSentence verb=$verbId");
-      int scriptId = ctx.getVar(GlobalContext.SENTENCE_SCRIPT);
-      ctx.stopScript(scriptId);
+      log("op_doSentence verb=$verbId");
+      int scriptId = vm.getVar(ScummVM.SENTENCE_SCRIPT);
+      vm.stopScript(scriptId);
     } else {
-      int objA = ind2 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-      int objB = ind3 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-      print("op_doSentence verb=$verbId objectA=$objA objectB=$objB");
+      int objA = ind2 ? vm.getVar(data().read16LE()) : data().read16LE();
+      int objB = ind3 ? vm.getVar(data().read16LE()) : data().read16LE();
+      log("op_doSentence verb=$verbId objectA=$objA objectB=$objB");
       // FIXME doSentence
     }
   }
 
-  void op_freezeScripts(ExecutionContext ctx, bool indirect) {
-    int flag = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    print ("op_freezeScripts flag=0x${flag.toRadixString(16)}");
-    ctx.freezeScripts(flag == 0, (flag & 0x80) != 0);
+  void op_freezeScripts(ScummVM vm, bool indirect) {
+    int flag = indirect ? vm.getVar(data().read16LE()) : data().read();
+    log("op_freezeScripts flag=0x${flag.toRadixString(16)}");
+    vm.freezeScripts(flag == 0, (flag & 0x80) != 0);
   }
 
-  void op_loadRoom(ExecutionContext ctx, bool indirect) {
-    int roomId = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    print("op_loadRoom room=$roomId");
-    ctx.startRoom(roomId);
+  void op_loadRoom(ScummVM vm, bool indirect) {
+    int roomId = indirect ? vm.getVar(data().read16LE()) : data().read();
+    log("op_loadRoom room=$roomId");
+    vm.startRoom(roomId);
   }
 
-  void op_setCameraAt(ExecutionContext ctx, bool indirect) {
-    int xpos = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    print("op_setCameraAt xpos=$xpos");
-    ctx.setCameraAt(xpos);
+  void op_setCameraAt(ScummVM vm, bool indirect) {
+    int xpos = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    log("op_setCameraAt xpos=$xpos");
+    vm.setCameraAt(xpos);
   }
 
-  void op_startSound(ExecutionContext ctx, bool indirect) {
-    int sound = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    print("op_startSound sound=$sound");
-    ctx.setGlobalVar(GlobalContext.MUSIC_TIMER, 0);
+  void op_startSound(ScummVM vm, bool indirect) {
+    int sound = indirect ? vm.getVar(data().read16LE()) : data().read();
+    log("op_startSound sound=$sound");
+    vm.setGlobalVar(ScummVM.MUSIC_TIMER, 0);
     // FIXME?
   }
 
-  void op_stopSound(ExecutionContext ctx, bool indirect) {
-    int sound = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    print("op_stopSound sound=$sound");
+  void op_stopSound(ScummVM vm, bool indirect) {
+    int sound = indirect ? vm.getVar(data().read16LE()) : data().read();
+    log("op_stopSound sound=$sound");
     // FIXME?
   }
 
-  void op_delay(ExecutionContext ctx) {
-    int delay = ctx.data.read() | (ctx.data.read() << 8) | (ctx.data.read() << 16);
-    print("op_delay delay=$delay");
-    ctx.delayExecution(delay);
+  void op_delay(ScummVM vm) {
+    int delay = data().read() | (data().read() << 8) | (data().read() << 16);
+    log("op_delay delay=$delay");
+    vm.currentThread.delayExecution(delay);
   }
 
-  void op_override(ExecutionContext ctx) {
-    int subOpcode = ctx.data.read();
+  void op_override(ScummVM vm) {
+    int subOpcode = data().read();
     if (subOpcode == 0) {
-      print("op_override end");
+      log("op_override end");
     } else {
-      print("op_override begin");
-      ctx.setGlobalVar(GlobalContext.OVERRIDE, 0);
-      ctx.data.read();
-      ctx.data.read();
-      ctx.data.read();
+      log("op_override begin");
+      vm.setGlobalVar(ScummVM.OVERRIDE, 0);
+      data().read();
+      data().read();
+      data().read();
       // FIXME
     }
   }
 
-  void op_putActorInRoom(ExecutionContext ctx, bool ind1, bool ind2) {
-    int actorId = ind1 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    int roomId = ind2 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    print("op_putActorInRoom actor=$actorId room=$roomId");
-    ctx.putActorInRoom(actorId, roomId);
+  void op_putActorInRoom(ScummVM vm, bool ind1, bool ind2) {
+    int actorId = ind1 ? vm.getVar(data().read16LE()) : data().read();
+    int roomId = ind2 ? vm.getVar(data().read16LE()) : data().read();
+    log("op_putActorInRoom actor=$actorId room=$roomId");
+    vm.putActorInRoom(actorId, roomId);
   }
 
-  void op_increment(ExecutionContext ctx) {
-    int varAddr = ctx.data.read16LE();
-    print("op_increment var=$varAddr");
-    int value = ctx.getVar(varAddr);
-    ctx.setVar(varAddr, value + 1);
+  void op_increment(ScummVM vm) {
+    int varAddr = data().read16LE();
+    log("op_increment var=$varAddr");
+    int value = vm.getVar(varAddr);
+    vm.setVar(varAddr, value + 1);
   }
 
-  void op_getActorRoom(ExecutionContext ctx, bool indirect) {
-    int varAddr = ctx.data.read16LE();
-    int actorId = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    print("op_getActorRoom res=$varAddr actor=$actorId");
-    int roomId = ctx.getActorRoom(actorId);
-    ctx.setVar(varAddr, roomId);
+  void op_getActorRoom(ScummVM vm, bool indirect) {
+    int varAddr = data().read16LE();
+    int actorId = indirect ? vm.getVar(data().read16LE()) : data().read();
+    log("op_getActorRoom res=$varAddr actor=$actorId");
+    int roomId = vm.getActorRoom(actorId);
+    vm.setVar(varAddr, roomId);
   }
 
-  void op_actorOps(ExecutionContext ctx, bool indirect) {
-    int actorId = indirect ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
+  void op_actorOps(ScummVM vm, bool indirect) {
+    int actorId = indirect ? vm.getVar(data().read16LE()) : data().read();
     while (true) {
-      int subOpcode = ctx.data.read();
+      int subOpcode = data().read();
       if (subOpcode == 0xff) {
         break;
       }
       switch (subOpcode) {
       case 0x00:
-        ctx.data.read(); // dummy
+        data().read(); // dummy
         break;
       case 0x01:
-        int costumeId = ctx.data.read();
-        print("op_actorOps actor=$actorId SO_COSTUME costume=$costumeId");
-        ctx.setActorCostume(actorId, costumeId);
+        int costumeId = data().read();
+        log("op_actorOps actor=$actorId SO_COSTUME costume=$costumeId");
+        vm.setActorCostume(actorId, costumeId);
         break;
       case 0x08:
-        print("op_actorOps actor=$actorId SO_DEFAULT");
+        log("op_actorOps actor=$actorId SO_DEFAULT");
         break;
       case 0x0b:
-        int index = ctx.data.read();
-        int color = ctx.data.read();
-        print("op_actorOps actor=$actorId SO_PALETTE index=$index color=$color");
+        int index = data().read();
+        int color = data().read();
+        log("op_actorOps actor=$actorId SO_PALETTE index=$index color=$color");
         break;
       case 0x11:
-        int sx = ctx.data.read();
-        int sy = ctx.data.read();
-        print("op_actorOps actor=$actorId SO_ACTOR_SCALE sx=$sx sy=$sy");
+        int sx = data().read();
+        int sy = data().read();
+        log("op_actorOps actor=$actorId SO_ACTOR_SCALE sx=$sx sy=$sy");
         break;
       case 0x12:
-         print("op_actorOps actor=$actorId SO_NEVER_ZCLIP");
+         log("op_actorOps actor=$actorId SO_NEVER_ZCLIP");
+         vm.forceClipping(actorId, false);
          break;
       case 0x13:
-        int zp = ctx.data.read();
-        print("op_actorOps actor=$actorId SO_ALWAYS_ZCLIP z-plane=$zp");
+        int zp = data().read();
+        log("op_actorOps actor=$actorId SO_ALWAYS_ZCLIP z-plane=$zp");
+         vm.forceClipping(actorId, true);
         break;
       case 0x14:
-        print("op_actorOps actor=$actorId SO_IGNORE_BOXES");
+        log("op_actorOps actor=$actorId SO_IGNORE_BOXES");
         break;
       case 0x15:
-        print("op_actorOps actor=$actorId SO_FOLLOW_BOXES");
-        ctx.putActorIfInCurrentRoom(actorId);
+        log("op_actorOps actor=$actorId SO_FOLLOW_BOXES");
+        vm.putActorIfInCurrentRoom(actorId);
         break;
       case 0x80:
-        ctx.data.read16LE(); // dummy
+        data().read16LE(); // dummy
         break;
       default:
         throw new Exception("Unsupported op_actorOps actor=$actorId opcode=0x${subOpcode.toRadixString(16)}");
       }
     }
   }
-  
-  void op_putActor(ExecutionContext ctx, bool ind1, bool ind2, bool ind3) {
-    int actorId = ind1 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    int x = ind2 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    int y = ind3 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read16LE();
-    print("op_putActor actor=$actorId x=$x y=$y");
-    ctx.putActor(actorId, x, y);
+
+  void op_putActor(ScummVM vm, bool ind1, bool ind2, bool ind3) {
+    int actorId = ind1 ? vm.getVar(data().read16LE()) : data().read();
+    int x = ind2 ? vm.getVar(data().read16LE()) : data().read16LE();
+    int y = ind3 ? vm.getVar(data().read16LE()) : data().read16LE();
+    log("op_putActor actor=$actorId x=$x y=$y");
+    vm.putActor(actorId, x, y);
   }
-  
-  void op_animateActor(ExecutionContext ctx, bool ind1, bool ind2) {
-    int actorId = ind1 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    int animation = ind2 ? ctx.getVar(ctx.data.read16LE()) : ctx.data.read();
-    print("op_animateActor actor=$actorId animation=$animation");
-    ctx.animateActor(actorId, animation);
+
+  void op_animateActor(ScummVM vm, bool ind1, bool ind2) {
+    int actorId = ind1 ? vm.getVar(data().read16LE()) : data().read();
+    int animation = ind2 ? vm.getVar(data().read16LE()) : data().read();
+    log("op_animateActor actor=$actorId animation=$animation");
+    vm.animateActor(actorId, animation);
+  }
+
+  void op_drawObject(ScummVM vm, bool indirect) {
+    int objectId = indirect ? vm.getVar(data().read16LE()) : data().read16LE();
+    int x = null, y = null, state = null;
+    while (true) {
+      int subOpcode = data().read();
+      if (subOpcode == 0xff) {
+        break;
+      }
+      switch (subOpcode) {
+      case 0x01:
+        x = data().read16LE();
+        y = data().read16LE();
+        log("op_drawObject object=$objectId xpos=$x ypos=$y");
+        break;
+      case 0x02:
+        int state = data().read16LE();
+        log("op_drawObject object=$objectId state=$state");
+        break;
+      default:
+        throw new Exception("Unsupported op_drawObject object=$objectId opcode=0x${subOpcode.toRadixString(16)}");
+      }
+    }
+    log("op_drawObject draw object=$objectId");
+    vm.pushObject(objectId);
   }
 }
