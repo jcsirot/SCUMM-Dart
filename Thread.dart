@@ -19,7 +19,7 @@
  *
  * ***** END LICENSE BLOCK *****  */
 
-class ExecutionContext {
+class Thread {
 
   static final int RUNNING = 1;
   static final int PENDED = 2;
@@ -40,9 +40,9 @@ class ExecutionContext {
 
   ScummVM vm;
   /* parent context for nested scripts */
-  ExecutionContext parent;
+  Thread parent;
 
-  ExecutionContext.root(ScummVM vm, Script script, List<int> params) {
+  Thread.root(ScummVM vm, Script script, List<int> params) {
     this.script = script;
     this.data = script.data.dup();
     this.vm = vm;
@@ -54,11 +54,11 @@ class ExecutionContext {
     this.delay = 0;
   }
 
-  ExecutionContext.fork(ExecutionContext ctx, Script script, List<int> params) {
+  Thread.fork(Thread t, Script script, List<int> params) {
     this.script = script;
     this.data = script.data.dup();
-    this.vm = ctx.vm;
-    this.parent = ctx;
+    this.vm = t.vm;
+    this.parent = t;
     this.local = params;
     this.stack = new List<int>();
     this.active = true;
@@ -66,9 +66,9 @@ class ExecutionContext {
     this.delay = 0;
   }
 
-  ExecutionContext fork(Script script, List<int> params) {
-    ExecutionContext ctx = new ExecutionContext.fork(this, script, params);
-    return ctx;
+  Thread fork(Script script, List<int> params) {
+    Thread t = new Thread.fork(this, script, params);
+    return t;
   }
 
   void setStatus(int status) {

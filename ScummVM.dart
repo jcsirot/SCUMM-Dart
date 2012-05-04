@@ -44,7 +44,7 @@ class ScummVM {
   static final int MI1_SPECIAL = 74;
 
   Map<int, Charset> charsets;
-  List<ExecutionContext> threads;
+  List<Thread> threads;
   Timer timer;
   Interpreter interpreter;
   ResourceManager res;
@@ -52,7 +52,7 @@ class ScummVM {
   Game game;
   int delta = 0;
 
-  ExecutionContext currentThread;
+  Thread currentThread;
   Room currentRoom;
   Map<int, Actor> actors;
   List<int> vars;
@@ -61,7 +61,7 @@ class ScummVM {
 
   ScummVM() {
     this.charsets = new Map<int, Charset>();
-    this.threads = new List<ExecutionContext>();
+    this.threads = new List<Thread>();
     this.timer = new Timer();
     this.interpreter = new Interpreter();
     this.actors = new Map<int, Actor>();
@@ -105,29 +105,29 @@ class ScummVM {
   }
 
   void freeze(bool force) {
-    ExecutionContext cur;
-    threads.forEach((ExecutionContext ctx) {
-      if (ctx.getStatus() == ExecutionContext.RUNNING && !ctx.isSuspended()) {
-        cur = ctx;
+    Thread cur;
+    threads.forEach((Thread t) {
+      if (t.getStatus() == Thread.RUNNING && !t.isSuspended()) {
+        cur = t;
       }
     });
-    threads.forEach((ExecutionContext ctx) {
-      if (ctx.script.index != cur.script.index && ctx.status != ExecutionContext.PENDED && ctx.status != ExecutionContext.DEAD) {
-        ctx.freeze(force);
+    threads.forEach((Thread t) {
+      if (t.script.index != cur.script.index && t.status != Thread.PENDED && t.status != Thread.DEAD) {
+        t.freeze(force);
       }
     });
   }
 
   void unfreeze() {
-    ExecutionContext cur;
-    threads.forEach((ExecutionContext ctx) {
-      if (ctx.getStatus() == ExecutionContext.RUNNING && !ctx.isSuspended()) {
-        cur = ctx;
+    Thread cur;
+    threads.forEach((Thread t) {
+      if (t.getStatus() == Thread.RUNNING && !t.isSuspended()) {
+        cur = t;
       }
     });
-    threads.forEach((ExecutionContext ctx) {
-      if (ctx.script.index != cur.script.index && ctx.frozenCount > 0) {
-        ctx.unfreeze();
+    threads.forEach((Thread t) {
+      if (t.script.index != cur.script.index && t.frozenCount > 0) {
+        t.unfreeze();
       }
     });
   }
@@ -137,18 +137,18 @@ class ScummVM {
   }
 
   void spawn(Script script, List<int> params) {
-    ExecutionContext parent;
-    threads.forEach((ExecutionContext ctx) {
-      if (ctx.getStatus() == ExecutionContext.RUNNING && !ctx.isSuspended()) {
-        parent = ctx;
+    Thread parent;
+    threads.forEach((Thread t) {
+      if (t.getStatus() == Thread.RUNNING && !t.isSuspended()) {
+        parent = t;
       }
     });
-    ExecutionContext fork = parent.fork(script, params);
-    parent.setStatus(ExecutionContext.PENDED);
-    fork.setStatus(ExecutionContext.RUNNING);
+    Thread fork = parent.fork(script, params);
+    parent.setStatus(Thread.PENDED);
+    fork.setStatus(Thread.RUNNING);
     threads.add(fork);
     run(fork);
-    parent.setStatus(ExecutionContext.RUNNING);
+    parent.setStatus(Thread.RUNNING);
     this.currentThread = parent;
   }
 
@@ -161,15 +161,15 @@ class ScummVM {
   }
 
   bool isScriptRunning(int scriptId) {
-    return threads.some((ExecutionContext ctx) {
-      return ctx.script.index == scriptId;
+    return threads.some((Thread t) {
+      return t.script.index == scriptId;
     });
   }
 
   void stopScript(int scriptId) {
-    threads.forEach((ExecutionContext ctx) {
-      if (ctx.script.index == scriptId) {
-        ctx.setStatus(ExecutionContext.DEAD);
+    threads.forEach((Thread t) {
+      if (t.script.index == scriptId) {
+        t.setStatus(Thread.DEAD);
       }
     });
   }
@@ -184,17 +184,17 @@ class ScummVM {
 
   void runScript(int index, List<int> params) {
     Script script = res.getScript(index);
-    ExecutionContext ctx = new ExecutionContext.root(this, script, params);
-    ctx.setStatus(ExecutionContext.RUNNING);
-    threads.add(ctx);
-    run(ctx);
+    Thread t = new Thread.root(this, script, params);
+    t.setStatus(Thread.RUNNING);
+    threads.add(t);
+    run(t);
   }
 
   void decreaseScriptsDelay(int clockTick) {
-    threads.forEach((ExecutionContext ctx) {
-      if (ctx != null) {
-        if (ctx.getStatus() == ExecutionContext.DELAYED) {
-          ctx.decreaseDelay(clockTick);
+    threads.forEach((Thread t) {
+      if (t != null) {
+        if (t.getStatus() == Thread.DELAYED) {
+          t.decreaseDelay(clockTick);
         }
       }
     });
@@ -203,23 +203,23 @@ class ScummVM {
   void runAllScripts() {
     int i = 0;
     while (i < threads.length) {
-      if (threads[i].getStatus() == ExecutionContext.DEAD) {
+      if (threads[i].getStatus() == Thread.DEAD) {
         threads.removeRange(i, 1);
       } else {
         i++;
       }
     }
-    threads.forEach((ExecutionContext ctx) {
-      if (ctx != null) {
-        if (ctx.getStatus() == ExecutionContext.RUNNING && ctx.frozenCount == 0) {
-          ctx.restore();
-          run(ctx);
+    threads.forEach((Thread t) {
+      if (t != null) {
+        if (t.getStatus() == Thread.RUNNING && t.frozenCount == 0) {
+          t.restore();
+          run(t);
         }
       }
     });
   }
 
-  void run(ExecutionContext thread) {
+  void run(Thread thread) {
     this.currentThread = thread;
     interpreter.run(this);
   }

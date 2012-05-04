@@ -17,7 +17,7 @@
 #source('Costume.dart');
 #source('Room.dart');
 #source('RoomObject.dart');
-#source('ExecutionContext.dart');
+#source('Thread.dart');
 #source('Cursor.dart');
 #source('GFX.dart');
 #source('VirtualScreen.dart');

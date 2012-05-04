@@ -114,8 +114,8 @@ class Interpreter {
       return vm.currentThread.data;
     };
     while (true) {
-      ExecutionContext t = vm.currentThread;
-      if (t.getStatus() == ExecutionContext.DEAD) {
+      Thread t = vm.currentThread;
+      if (t.getStatus() == Thread.DEAD) {
         return;
       }
       if (t.isSuspended()) {
@@ -180,12 +180,7 @@ class Interpreter {
     int scriptId = indirect ? vm.getVar(data().read16LE()) : data().read();
     List<int> params = readVarargs(vm);
     log("op_startScript script=$scriptId params=$params");
-    //Script script = vm.getScript(scriptId);
     vm.spawnWithId(scriptId, params);
-    //ExecutionContext fork = ctx.fork(script, params);
-    //this.run(fork);
-    /* Reinit Log after exiting nested script */
-    //initLog(vm);
     log("op_startScript exit spawned script");
   }
 
@@ -430,7 +425,7 @@ class Interpreter {
   }
 
   void op_stopObjectCode(ScummVM vm) {
-    //vm.currentThread.setStatus(ExecutionContext.DEAD);
+    //vm.currentThread.setStatus(Thread.DEAD);
     vm.currentThread.kill();
     //vm.stopThisScript();
     log("op_stopObjectCode");
