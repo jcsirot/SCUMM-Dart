@@ -19,7 +19,21 @@
  *
  * ***** END LICENSE BLOCK *****  */
 
-class Message {
+class MessageFactory<M extends Message> {
+
+  MessageParameters _defaults;
+
+  MessageParameters get defaults() => new MessageParameters.copy(_defaults);
+  set defaults(MessageParameters params) => this._defaults = params;
+
+  MessageFactory() {
+    this.defaults = new MessageParameters();
+  }
+
+  abstract M build(String message, MessageParameters params);
+}
+
+class MessageParameters {
 
   int x, y;
   int right, height;
@@ -29,13 +43,31 @@ class Message {
   bool overhead;
   bool no_talk_anim;
   bool wrapping;
+
+  MessageParameters() { }
+
+  MessageParameters.copy(MessageParameters params) {
+    this.x = params.x;
+    this.y = params.y;
+    this.right = params.right;
+    this.height = params.height;
+    this.color = params.color;
+    this.charset = params.charset;
+    this.center = params.center;
+    this.overhead = params.overhead;
+    this.no_talk_anim = params.no_talk_anim;
+    this.wrapping = params.wrapping;
+  }
+}
+
+class Message {
+
   String value;
+  MessageParameters params;
+
+  Message(this.value, this.params);
 
   abstract void printString(ScummVM vm);
-
-  void setValue(String value) {
-    this.value = value;
-  }
 
   String format(ScummVM vm) {
     List<int> sb = new List<int>();

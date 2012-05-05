@@ -435,10 +435,10 @@ class ScummVM {
   }
 
   void drawActorMessage(Message msg) {
-    Charset charset = res.getCharset(4); // FIXME
+    Charset charset = res.getCharset(msg.params.charset);
     int width = charset.getStringWidth(msg.value);
-    int xstart = msg.center ? msg.x - (width >> 1) : msg.x;
-    charset.printString(msg.value, xstart, msg.y, width, msg.color, gfx.main);
+    int xstart = msg.params.center ? msg.params.x - (width >> 1) : msg.params.x;
+    charset.printString(msg.value, xstart, msg.params.y, width, msg.params.color, gfx.main);
   }
 
   void forceClipping(int actorId, bool clipped) {

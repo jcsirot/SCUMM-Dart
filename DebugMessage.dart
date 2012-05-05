@@ -19,7 +19,29 @@
  *
  * ***** END LICENSE BLOCK *****  */
 
+class DebugMessageFactory extends MessageFactory<DebugMessage> {
+
+  static DebugMessageFactory that;
+
+  factory DebugMessageFactory() {
+    if (that == null) {
+          that = new DebugMessageFactory._internal();
+    }
+    return that;
+  }
+
+  DebugMessageFactory._internal() {
+    this.defaults = new MessageParameters();
+  }
+
+  DebugMessage build(String msg, MessageParameters params) {
+    return new DebugMessage(msg, params);
+  }
+}
+
 class DebugMessage extends Message {
+
+  DebugMessage(String msg, MessageParameters params) : super(msg, params);
 
   void printString(ScummVM vm) {
     String str = format(vm);

@@ -248,7 +248,11 @@ class Interpreter {
     case Cursor.SO_CHARSET_SET:
       int charsetId = data().read();
       log("op_cursorCommand setCharset=$charsetId");
-      /* FIXME set charset */
+      DefaultMessageFactory f = new DefaultMessageFactory();
+      MessageParameters params = f.defaults;
+      params.charset = charsetId;
+      f.defaults = params;
+      // FIXME other message factories?
       break;
     default:
       throw new Exception("Unsupported op_cursorCommand sub-opcode=0x${subOpcode.toRadixString(16)}");
@@ -475,15 +479,18 @@ class Interpreter {
 
   void op_print(ScummVM vm, bool indirect) {
     int actorId = indirect ? vm.getVar(data().read16LE()) : data().read();
-    Message msg;
+    MessageFactory f;
+    MessageParameters params;
     switch (actorId) {
     case 253:
-      msg = new DebugMessage();
+      f = new DebugMessageFactory();
       break;
     default:
-      msg = new DefaultMessage();
+      f = new DefaultMessageFactory();
       break;
     }
+
+    params = f.defaults;
 
     while (true) {
       int subOpcode = data().read();
@@ -492,27 +499,27 @@ class Interpreter {
       }
       switch (subOpcode) {
       case 0x00:
-        msg.x = data().read16LE();
-        msg.y = data().read16LE();
-        log("op_print actor=$actorId x=${msg.x}, y=${msg.y}");
+        params.x = data().read16LE();
+        params.y = data().read16LE();
+        log("op_print actor=$actorId x=${params.x}, y=${params.y}");
         break;
       case 0x01:
         // Color;
-        msg.color = data().read();
-        log("op_print actor=$actorId color=${msg.color}");
+        params.color = data().read();
+        log("op_print actor=$actorId color=${params.color}");
         break;
       case 0x04:
         // Center the text;
-        msg.center = true;
+        params.center = true;
         log("op_print actor=$actorId center");
         break;
       case 0x07:
-        msg.overhead = true;
+        params.overhead = true;
         log("op_print actor=$actorId overhead");
         break;
       case 0x0f:
         String s = new String.fromCharCodes(data().readArray());
-        msg.setValue(s);
+        Message msg = f.build(s, params);
         log("op_print actor=$actorId print string");
         msg.printString(vm);
         return;
@@ -520,6 +527,7 @@ class Interpreter {
         throw new Exception("Unsupported op_print sub-opcode 0x${subOpcode.toRadixString(16)}");
       }
     }
+    f.defaults = params;
   }
 
   void op_isGreater(ScummVM vm, bool indirect) {

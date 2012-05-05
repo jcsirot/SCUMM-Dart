@@ -19,7 +19,27 @@
  *
  * ***** END LICENSE BLOCK *****  */
 
+class DefaultMessageFactory extends MessageFactory<DefaultMessage> {
+
+  static DefaultMessageFactory that;
+
+  factory DefaultMessageFactory() {
+    if (that == null) {
+      that = new DefaultMessageFactory._internal();
+    }
+    return that;
+  }
+
+  DefaultMessageFactory._internal();
+
+  DefaultMessage build(String msg, MessageParameters params) {
+    return new DefaultMessage(msg, params);
+  }
+}
+
 class DefaultMessage extends Message {
+
+  DefaultMessage(String msg, MessageParameters params) : super(msg, params);
 
   void printString(ScummVM vm) {
     String str = format(vm);
