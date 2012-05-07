@@ -96,6 +96,12 @@ class VirtualScreen {
     }
   }
 
+  void clearText() {
+    for (int i = 0; i < textBuffer.length; i++) {
+      textBuffer[i] = 0xfd;
+    }
+  }
+
   void drawBackground(Room room, int start, int count) {
     Stream data = room.bg;
     data.reset();

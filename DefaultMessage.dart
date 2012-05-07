@@ -44,6 +44,7 @@ class DefaultMessage extends Message {
   void printString(ScummVM vm) {
     String str = format(vm);
     print("[DEFAULT] $str");
+    print("[DEFAULT] ${this.value.charCodes()}");
     vm.drawActorMessage(this);
   }
 }

@@ -65,9 +65,10 @@ class Charset extends Resource {
     return w + dx;
   }
 
-  int getStringWidth(String str) {
+  int getLineWidth(String str, [int start = 0]) {
     int width = 1;
-    Stream ins = new ScummFile.fromList(str.charCodes());
+    List<int> codes = str.charCodes();
+    Stream ins = new ScummFile.fromList(codes.getRange(start, codes.length - start));
     while (!ins.eof()) {
       int chr = ins.read();
       if (chr == 0xff || chr == 0xfe) {
@@ -75,28 +76,53 @@ class Charset extends Resource {
         if (chr == 2 || chr == 1 || chr == 9) {
           break;
         }
+      } else if (chr == 0xd) {
+        break;
       }
       width += getCharWidth(chr);
     }
     return width;
   }
 
-  void printString(String str, int x, int y, int width, int color, VirtualScreen vs) {
-    int oldColor = palette[1];
-    palette[1] = color;
-    Stream ins = new ScummFile.fromList(str.charCodes());
-    WritableStream out = new ScummFile.fromUint8Array(vs.textBuffer);
-    while (!ins.eof()) {
-      int chr = ins.read();
-      if (chr >= 254) { // FIXME
+  String addLineBreaks(String msg, int maxWidth) {
+    List<int> codes = msg.charCodes();
+    int idx = 0;
+    int chr;
+    int curw = 1;
+    int lastSpace = -1;
+    while (idx < codes.length) {
+      chr = codes[idx++];
+      if (chr == 0x40) { /* @ */
         continue;
       }
-      out.reset();
-      out.seek(y * 320 + x);
-      printChar(chr, y, out);
-      x += getCharWidth(chr);
+      if (chr == 0xfe || chr == 0xff) {
+        chr = codes[idx++];
+        if (chr == 1) {
+          codes[idx - 1] = 0xd;
+          curw = 1;
+          continue;
+        } else if (chr == 2) {
+          break;
+        } else {
+          throw new Exception("addLineBreaks unsupported char code: ${chr}");
+        }
+      }
+      if (chr == 0x20) { /* SPACE */
+        lastSpace = idx - 1;
+      }
+      curw += getCharWidth(chr);
+      if (lastSpace == -1) {
+        continue;
+      }
+      if (curw > maxWidth) {
+        codes[lastSpace] = 0xd;
+        curw = 1;
+        idx = lastSpace + 1;
+        lastSpace = -1;
+        print("Break line, indexx=${lastSpace}");
+      }
     }
-    palette[1] = oldColor;
+    return new String.fromCharCodes(codes);
   }
 
   void printChar(int chr, int top, WritableStream out) {
@@ -132,5 +158,38 @@ class Charset extends Resource {
       }
       out.seek(320 - w);
     }
+  }
+
+  void printString(Message msg, VirtualScreen vs) {
+    vs.clearText();
+    String str = addLineBreaks(msg.value, 320);
+    int width = getLineWidth(msg.value);
+    int x = msg.params.center ? msg.params.x - (width >> 1) : msg.params.x;
+    int y = msg.params.y;
+    int oldColor = palette[1];
+    palette[1] = msg.params.color;
+    Stream ins = new ScummFile.fromList(str.charCodes());
+    WritableStream out = new ScummFile.fromUint8Array(vs.textBuffer);
+    int idx = 0;
+    while (!ins.eof()) {
+      int chr = ins.read();
+      if (chr >= 254) { // FIXME
+        idx++;
+        continue;
+      } else if (chr == 0xd) {
+        y += height;
+        width = getLineWidth(str, ++idx);
+        x = msg.params.center ? msg.params.x - (width >> 1) : msg.params.x;
+        out.reset();
+        out.seek(y * 320 + x);
+      } else {
+        out.reset();
+        out.seek(y * 320 + x);
+        x += getCharWidth(chr);
+      }
+      idx++;
+      printChar(chr, y, out);
+    }
+    palette[1] = oldColor;
   }
 }
