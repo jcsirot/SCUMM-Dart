@@ -93,6 +93,7 @@ class Interpreter {
     opcodes[0xb2] = OP1(op_setCameraAt, true);
     opcodes[0xb8] = OP1(op_isLessEquals, true);
     opcodes[0xbc] = OP1(op_stopSound, true);
+    opcodes[0xc0] = op_endCutScene;
     opcodes[0xc1] = OP3(op_putActor, true, true, false);
     opcodes[0xc4] = OP1(op_isLess, true);
     opcodes[0xc8] = OP1(op_isEqual, true);
@@ -195,6 +196,11 @@ class Interpreter {
       log("op_resourceRoutine load script=$resId");
       vm.getScript(resId);
       break;
+    case 0x02:
+      int resId = data().read();
+      log("op_resourceRoutine load sound=$resId");
+      // FIXME load sound
+      break;
     case 0x03:
       int resId = data().read();
       log("op_resourceRoutine load costume=$resId");
@@ -209,7 +215,15 @@ class Interpreter {
       int resId = data().read();
       // FIXME lock script
       break;
-    case 0xc:
+    case 0x0a:
+      int resId = data().read();
+      // FIXME lock sound
+      break;
+    case 0x0b:
+      int resId = data().read();
+      // FIXME lock costume
+      break;
+    case 0x0c:
       int resId = data().read();
       break;
     case 0x11:
@@ -574,6 +588,11 @@ class Interpreter {
     List<int> params = readVarargs(vm);
     log("op_cutScene params=$params");
     vm.beginCutScene(params);
+  }
+
+  void op_endCutScene(ScummVM vm) {
+    log("op_endCutScene");
+    //vm.endCutScene();
   }
 
   void op_add(ScummVM vm, bool indirect) {
