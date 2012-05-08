@@ -381,8 +381,9 @@ class Interpreter {
         log("op_expression div");
         break;
       case 0x6:
-        // FIXME execute opcode
-        throw new Exception("op_expression NYI");
+        exec(vm);
+        vm.currentThread.push(vm.getVar(0));
+        break;
       default:
         log("Unsupported op_expression opcode=0x${subOpcode.toRadixString(16)}");
       }
