@@ -39,6 +39,7 @@ class Interpreter {
     opcodes[0x11] = OP2(op_animateActor, false, false);
     opcodes[0x13] = OP1(op_actorOps, false);
     opcodes[0x14] = OP1(op_print, false);
+    opcodes[0x16] = OP1(op_randomNumber, false);
     opcodes[0x18] = op_jumpRelative;
     opcodes[0x19] = OP3(op_doSentence, false, false, false);
     opcodes[0x1a] = OP1(op_move, false);
@@ -79,6 +80,7 @@ class Interpreter {
     opcodes[0x91] = OP2(op_animateActor, true, false);
     opcodes[0x93] = OP1(op_actorOps, true);
     opcodes[0x94] = OP1(op_print, true);
+    opcodes[0x96] = OP1(op_randomNumber, true);
     opcodes[0x9a] = OP1(op_move, true);
     opcodes[0x9c] = OP1(op_startSound, true);
     opcodes[0xa0] = op_stopObjectCode;
@@ -767,5 +769,12 @@ class Interpreter {
     }
     log("op_drawObject draw object=$objectId");
     vm.pushObject(objectId);
+  }
+
+  void op_randomNumber(ScummVM vm, bool indirect) {
+    int varId = data().read16LE();
+    int max = indirect ? vm.getVar(data().read16LE()) : data().read();
+    vm.setVar(varId, (Math.random() * 0x8000000).toInt() % (max + 1));
+    log("op_randomNumber res=$varId, max=$max");
   }
 }
