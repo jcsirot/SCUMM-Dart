@@ -1,0 +1,9 @@
+name: scummdart
+version: 1.0.0
+description: An experimental SCUMM Virtual Machine implementation written in Dart for playing old Lucas Art games.
+author: Jean-Christophe Sirot <sirot@chelonix.net>
+homepage: https://github.com/jcsirot/SCUMM-Dart
+dependencies:
+    log4dart: any
+    game_loop: any
+    browser: any
